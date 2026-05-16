@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react'
 import Svg, { Path } from 'react-native-svg';
 import { launchImageLibrary } from 'react-native-image-picker';
 
-const dummyProfile={
+export const dummyProfile={
     profileImage: 'https://img.freepik.com/premium-photo/sculpture-shield-with-shield-it_1309810-11832.jpg?semt=ais_hybrid&w=740&q=80',
     name:'Honey Sharma',
     pronouns:'he/him',
