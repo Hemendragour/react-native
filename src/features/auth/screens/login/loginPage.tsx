@@ -1,4 +1,4 @@
-import React from 'react';
+import * as React from 'react';
 import {
   View,
   Text,
@@ -16,9 +16,13 @@ import SocialButtons from '../../components/SocialButtons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../types/Types';
 
-type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'> & {
-  setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
-};
+// old code: LoginScreen accepted setIsLoggedIn prop
+// type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'> & {
+//   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
+// };
+
+// ✅ new code: no setIsLoggedIn prop — Redux handles auth state
+type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 /**
  * LoginScreen
@@ -32,7 +36,9 @@ type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'> & {
  *   - Top decorative arc (the brown curve, simplified)
  *   - Floating white card with all form content
  */
-const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, setIsLoggedIn }) => {
+// old code: const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, setIsLoggedIn }) => {
+// ✅ new code: no setIsLoggedIn prop
+const LoginScreen = ({ navigation }: LoginScreenProps) => {
 
   return (
     <SafeAreaView className="flex-1 bg-amber-50">
@@ -55,23 +61,22 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, setIsLoggedIn }) 
         <View className="absolute inset-x-0 top-0 items-center justify-center mt-10"></View>
       </View>
 
-      {/* ── Scrollable content (KeyboardAvoiding so form stays visible) ── */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1"
         keyboardVerticalOffset={0}
       >
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
-            justifyContent: 'flex-end',
-            paddingBottom: 32,
+            justifyContent: 'center',
+            paddingVertical: 32,
           }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
           {/* ── White card that floats over the arc ── */}
-          <View className="mx-4 mt-20 bg-white rounded-3xl shadow-2xl px-6 py-16">
+          <View className="mx-4 my-4 bg-white rounded-3xl shadow-2xl px-6 py-16">
             {/* Header */}
             <AuthHeader />
 
@@ -79,7 +84,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, setIsLoggedIn }) 
             <View className="h-px bg-[#e0d8cf] my-6" />
 
             {/* Login Form */}
-            <LoginForm navigation={navigation} setIsLoggedIn={setIsLoggedIn} />
+            {/* old code: <LoginForm navigation={navigation} setIsLoggedIn={setIsLoggedIn} /> */}
+            {/* ✅ new code: LoginForm uses Redux useAuth() internally */}
+            <LoginForm navigation={navigation} />
 
             {/* Social Buttons */}
             <SocialButtons />
@@ -107,3 +114,4 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, setIsLoggedIn }) 
 };
 
 export default LoginScreen;
+

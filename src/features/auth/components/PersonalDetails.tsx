@@ -1,9 +1,11 @@
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
-import React, { useState } from 'react';
+import * as React from 'react';
+import { useState } from 'react';
 
 interface Props {
   onNext: (data: any) => void;
   onBack: () => void;
+  initialValues?: any;
 }
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -43,21 +45,21 @@ const validators = {
 
 type Fields = 'firstName' | 'lastName' | 'phone' | 'location';
 
-const FieldLabel: React.FC<{ text: string }> = ({ text }) => (
+const FieldLabel = ({ text }: { text: string }) => (
   <Text className="text-sm font-medium text-gray-700 mb-2">{text}</Text>
 );
 
-const FieldError: React.FC<{ message?: string }> = ({ message }) =>
+const FieldError = ({ message }: { message?: string }) =>
   message ? (
     <Text className="text-red-500 text-xs mt-1.5">• {message}</Text>
   ) : null;
 
-const PersonalDetails: React.FC<Props> = ({ onNext, onBack }) => {
+const PersonalDetails = ({ onNext, onBack, initialValues }: Props) => {
   const [values, setValues] = useState({
-    firstName: '',
-    lastName: '',
-    phone: '',
-    location: '',
+    firstName: initialValues?.firstName || '',
+    lastName: initialValues?.lastName || '',
+    phone: initialValues?.phone || initialValues?.phoneNumber || '',
+    location: initialValues?.location || '',
   });
   const [errors, setErrors] = useState<Partial<Record<Fields, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<Fields, boolean>>>({});

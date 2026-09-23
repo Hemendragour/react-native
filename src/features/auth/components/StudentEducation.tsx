@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity } from 'react-native';
+import { ChevronDown } from 'lucide-react-native';
+import PickerSheet from './PickerSheet';
+
+const VALID_DEGREES = [
+  'B.Tech', 'B.E', 'B.Sc', 'BCA', 'B.Com', 'B.A', 'M.Tech', 'M.E', 'M.Sc', 'MCA', 'M.Com', 'M.A', 'MBA', 'PhD', 'Diploma', 'Other'
+].map(d => ({ label: d, value: d }));
+
+const VALID_FIELDS = [
+  'Computer Science', 'Information Technology', 'Electronics', 'Electrical', 'Mechanical', 'Civil', 'Chemical', 'Biotechnology', 'Aerospace', 'Automobile', 'Data Science', 'Artificial Intelligence', 'Machine Learning', 'Cyber Security', 'Business Administration', 'Finance', 'Marketing', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Other'
+].map(f => ({ label: f, value: f }));
 
 interface Props {
   onNext: (data: any) => void;
@@ -48,6 +58,8 @@ const StudentEducation: React.FC<Props> = ({ onNext, onBack }) => {
   const [values, setValues] = useState({ collegeName: '', degree: '', fieldOfStudy: '', graduationYear: '' });
   const [errors, setErrors] = useState<Partial<Record<Fields, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<Fields, boolean>>>({});
+  const [showDegreePicker, setShowDegreePicker] = useState(false);
+  const [showFieldPicker, setShowFieldPicker] = useState(false);
 
   const setValue = (field: Fields, val: string) => {
     setValues((p) => ({ ...p, [field]: val }));
@@ -99,6 +111,7 @@ const StudentEducation: React.FC<Props> = ({ onNext, onBack }) => {
       {/* Degree */}
       <View>
         <FieldLabel text="Degree (e.g. B.Tech)" />
+        {/*
         <TextInput
           value={values.degree}
           onChangeText={(v) => setValue('degree', v)}
@@ -107,12 +120,38 @@ const StudentEducation: React.FC<Props> = ({ onNext, onBack }) => {
           placeholderTextColor="#9ca3af"
           className={inputClass('degree')}
         />
+        */}
+        <TouchableOpacity
+          onPress={() => setShowDegreePicker(true)}
+          activeOpacity={0.8}
+          className={`flex-row items-center justify-between w-full px-5 py-4 rounded-2xl border bg-white ${
+            errors.degree && touched.degree ? 'border-red-400' : 'border-[#4a3728]/40'
+          }`}
+        >
+          <Text className={`text-sm ${values.degree ? 'text-black' : 'text-[#9ca3af]'}`}>
+            {values.degree || "Select Degree"}
+          </Text>
+          <ChevronDown size={20} color="#9ca3af" />
+        </TouchableOpacity>
+        <PickerSheet
+          visible={showDegreePicker}
+          title="Select Degree"
+          options={VALID_DEGREES}
+          selected={values.degree}
+          onSelect={(val) => {
+            setTouched((p) => ({ ...p, degree: true }));
+            setValues((p) => ({ ...p, degree: val }));
+            setErrors((p) => ({ ...p, degree: validators.degree(val) }));
+          }}
+          onClose={() => setShowDegreePicker(false)}
+        />
         {touched.degree && <FieldError message={errors.degree} />}
       </View>
 
       {/* Field of Study */}
       <View>
         <FieldLabel text="Field of Study" />
+        {/*
         <TextInput
           value={values.fieldOfStudy}
           onChangeText={(v) => setValue('fieldOfStudy', v)}
@@ -120,6 +159,31 @@ const StudentEducation: React.FC<Props> = ({ onNext, onBack }) => {
           placeholder="Computer Science, Commerce"
           placeholderTextColor="#9ca3af"
           className={inputClass('fieldOfStudy')}
+        />
+        */}
+        <TouchableOpacity
+          onPress={() => setShowFieldPicker(true)}
+          activeOpacity={0.8}
+          className={`flex-row items-center justify-between w-full px-5 py-4 rounded-2xl border bg-white ${
+            errors.fieldOfStudy && touched.fieldOfStudy ? 'border-red-400' : 'border-[#4a3728]/40'
+          }`}
+        >
+          <Text className={`text-sm ${values.fieldOfStudy ? 'text-black' : 'text-[#9ca3af]'}`}>
+            {values.fieldOfStudy || "Select Field of Study"}
+          </Text>
+          <ChevronDown size={20} color="#9ca3af" />
+        </TouchableOpacity>
+        <PickerSheet
+          visible={showFieldPicker}
+          title="Select Field of Study"
+          options={VALID_FIELDS}
+          selected={values.fieldOfStudy}
+          onSelect={(val) => {
+            setTouched((p) => ({ ...p, fieldOfStudy: true }));
+            setValues((p) => ({ ...p, fieldOfStudy: val }));
+            setErrors((p) => ({ ...p, fieldOfStudy: validators.fieldOfStudy(val) }));
+          }}
+          onClose={() => setShowFieldPicker(false)}
         />
         {touched.fieldOfStudy && <FieldError message={errors.fieldOfStudy} />}
       </View>
