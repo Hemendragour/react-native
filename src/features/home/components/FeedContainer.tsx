@@ -39,6 +39,13 @@ interface FeedContainerProps {
   profileImage?: string;
   onOpenWithPerspectiveModal?: (post: any) => void;
   handleRepostInstant?: (index: number) => void;
+  handleUndoRepost?: (index: number) => void;
+  commentImage?: any;
+  setCommentImage?: (v: any) => void;
+  onPickCommentPhoto?: () => void;
+  submittingCommentPostId?: string | null;
+  loadingCommentsPostId?: string | null;
+  commentUserReactions?: Record<string, string | null>;
 }
 
 const PostSkeleton = () => (
@@ -86,8 +93,7 @@ export default function FeedContainer(props: FeedContainerProps) {
   if (posts.length === 0) {
     return (
       <View className="py-20 items-center gap-3">
-        <ActivityIndicator color="#4a3728" />
-        <Text className="text-[#4a3728] text-base">No posts available yet</Text>
+        <Text className="text-[#4a3728] font-bold text-base">No posts available yet</Text>
         <Text className="text-brand-dark/40 text-sm">Check back later for updates!</Text>
       </View>
     );
@@ -133,6 +139,13 @@ export default function FeedContainer(props: FeedContainerProps) {
           profileImage={props.profileImage}
           onOpenWithPerspectiveModal={props.onOpenWithPerspectiveModal}
           handleRepostInstant={props.handleRepostInstant}
+          handleUndoRepost={props.handleUndoRepost}
+          commentImage={props.commentImage}
+          setCommentImage={props.setCommentImage}
+          onPickCommentPhoto={props.onPickCommentPhoto}
+          isSubmitting={props.submittingCommentPostId === (post.entryId || post.postId)}
+          isLoadingComments={props.loadingCommentsPostId === (post.entryId || post.postId || post.id || post._id)}
+          commentUserReactions={props.commentUserReactions}
         />
       ))}
     </View>
