@@ -5,9 +5,8 @@ import {
 import { ChevronLeft } from 'lucide-react-native';
 import { C, MONTHS } from '../data/mentorData';
 import type { Service, CalendarData, FormData } from '../data/mentortypes';
-
-// TODO: import { useProfileData } from '@/hooks/data/useProfileData';
-// TODO: import { useAuth } from '@/hooks/useAuth';
+import { useAppSelector } from '../../../store/hooks';
+import AuthService from '../../../services/auth.service';
 
 interface DetailsStepProps {
   selectedService: Service | null;
@@ -21,17 +20,38 @@ const DetailsStep: React.FC<DetailsStepProps> = ({
 }) => {
   const { selectedDate, selectedTime, currentMonth } = calendarData;
   const month = currentMonth.getMonth();
-  const year  = currentMonth.getFullYear();
+  const year = currentMonth.getFullYear();
+
+  const profileData = useAppSelector((state) => state.profile.data);
 
   const [formData, setFormData] = useState<FormData>({
     name: '', email: '', phone: '', referralCode: '',
   });
 
-  // TODO: Replace stub with real hooks:
-  // const { user } = useAuth();
-  // const { userProfileData, fetchUserProfile } = useProfileData();
-  // useEffect(() => { if (user) fetchUserProfile(); }, [user]);
-  // useEffect(() => { if (userProfileData) setFormData(prev => ({ ...prev, name: ..., email: ..., phone: ... })); }, [userProfileData]);
+  useEffect(() => {
+    // 1. Try Redux profile data first
+    const pd = (profileData as any) || {};
+    let name = pd.fullName || pd.name || (pd.firstName ? `${pd.firstName} ${pd.lastName || ''}`.trim() : '');
+    let email = pd.email || '';
+    let phone = pd.phoneNumber || pd.phone || '';
+
+    // 2. Fallback to AuthService cached user data
+    if (!name || !email) {
+      const user = AuthService.getCurrentUser() as any;
+      if (user) {
+        if (!name) name = user.fullName || user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        if (!email) email = user.email || '';
+        if (!phone) phone = user.phoneNumber || user.phone || '';
+      }
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      name: name || prev.name,
+      email: email || prev.email,
+      phone: phone || prev.phone,
+    }));
+  }, [profileData]);
 
   const canProceed = !!(formData.name && formData.email && formData.phone);
 
@@ -53,10 +73,10 @@ const DetailsStep: React.FC<DetailsStepProps> = ({
           {/* Fields */}
           <View className="gap-y-4 mb-5">
             {([
-              { label: 'Full Name *',            key: 'name',         ph: 'Your full name',       kb: 'default' },
-              { label: 'Email Address *',         key: 'email',        ph: 'you@example.com',      kb: 'email-address' },
-              { label: 'Phone Number *',          key: 'phone',        ph: '+91 XXXXX XXXXX',      kb: 'phone-pad' },
-              { label: 'Referral Code (Optional)',key: 'referralCode', ph: 'Enter code if any',    kb: 'default' },
+              { label: 'Full Name *', key: 'name', ph: 'Your full name', kb: 'default' },
+              { label: 'Email Address *', key: 'email', ph: 'you@example.com', kb: 'email-address' },
+              { label: 'Phone Number *', key: 'phone', ph: '+91 XXXXX XXXXX', kb: 'phone-pad' },
+              { label: 'Referral Code (Optional)', key: 'referralCode', ph: 'Enter code if any', kb: 'default' },
             ] as { label: string; key: keyof FormData; ph: string; kb: any }[]).map(({ label, key, ph, kb }) => {
               const isLocked = LOCKED_FIELDS.includes(key);
               return (
@@ -70,11 +90,10 @@ const DetailsStep: React.FC<DetailsStepProps> = ({
                     keyboardType={kb}
                     editable={!isLocked}
                     autoCapitalize="none"
-                    className={`w-full px-4 py-3.5 rounded-2xl border text-sm ${
-                      isLocked
-                        ? 'bg-gray-100 border-[#e0d8cf] text-gray-500'
-                        : 'bg-[#fbf7f3] border-[#e0d8cf] text-[#4a3728]'
-                    }`}
+                    className={`w-full px-4 py-3.5 rounded-2xl border text-sm ${isLocked
+                      ? 'bg-gray-100 border-[#e0d8cf] text-gray-500'
+                      : 'bg-[#fbf7f3] border-[#e0d8cf] text-[#4a3728]'
+                      }`}
                   />
                 </View>
               );
@@ -86,9 +105,10 @@ const DetailsStep: React.FC<DetailsStepProps> = ({
             <Text className="font-bold text-[#4a3728] mb-3 text-sm">Order Summary</Text>
             {([
               ['Service', selectedService?.title ?? ''],
-              ['Date',    `${selectedDate} ${MONTHS[month]} ${year}`],
-              ['Time',    selectedTime],
-              ['Total',   `₹${selectedService?.price}`],
+              ['Duration', selectedService?.duration ?? '30 Min'],
+              ['Date', `${selectedDate} ${MONTHS[month]} ${year}`],
+              ['Time', selectedTime],
+              ['Total', `₹${selectedService?.price}`],
             ] as [string, string][]).map(([k, v], i) => (
               <View key={k} className="flex-row justify-between mb-1.5">
                 <Text className="text-xs text-[#7a5c3e]">{k}:</Text>
