@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  Modal, ActivityIndicator, Alert,
+  Modal, ActivityIndicator, Alert, ScrollView
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import AuthService from '../../../../services/auth.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,8 +14,9 @@ interface UpdatePostModalProps {
   postId: string;
   isOpen: boolean;
   onClose: () => void;
-  currentTitle: string;
-  onUpdate: (postId: string, newTitle: string) => void;
+  currentTitle?: string;
+  currentContent?: string;
+  onUpdate: (postId: string, newTitle: string, newContent: string) => void;
 }
 
 // ─── Icon ─────────────────────────────────────────────────────────────────────
@@ -28,24 +30,26 @@ const CloseIcon = () => (
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const UpdatePostModal: React.FC<UpdatePostModalProps> = ({
-  postId, isOpen, onClose, currentTitle, onUpdate,
+  postId, isOpen, onClose, currentTitle = '', currentContent = '', onUpdate,
 }) => {
-  const [title, setTitle]           = useState(currentTitle);
+  const [title, setTitle] = useState(currentTitle);
+  const [content, setContent] = useState(currentContent);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     setTitle(currentTitle);
-  }, [currentTitle, isOpen]);
+    setContent(currentContent);
+  }, [currentTitle, currentContent, isOpen]);
 
   const handleSubmit = async () => {
-    if (!title.trim()) {
-      Alert.alert('Error', 'Title cannot be empty');
+    if (!title.trim() && !content.trim()) {
+      Alert.alert('Error', 'Post must have a title or content.');
       return;
     }
     try {
       setIsSubmitting(true);
-      // await AuthService.updatePost(postId, { title: title.trim() }); ← uncomment when API ready
-      onUpdate(postId, title.trim());
+      await AuthService.updatePost(postId, { title: title.trim(), content: content.trim() });
+      onUpdate(postId, title.trim(), content.trim());
       onClose();
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to update post');
@@ -57,30 +61,44 @@ const UpdatePostModal: React.FC<UpdatePostModalProps> = ({
   return (
     <Modal visible={isOpen} transparent animationType="slide" onRequestClose={onClose}>
       <View className="flex-1 bg-black/50 justify-end">
-        <View className="bg-[#f6ede8] rounded-t-3xl">
+        <View className="bg-[#f6ede8] rounded-t-3xl max-h-[90%]">
 
           {/* Header */}
           <View className="flex-row items-center justify-between p-5 bg-brand-dark rounded-t-3xl">
-            <Text className="text-[#4a3728] text-lg font-bold">Update Post Title</Text>
+            <Text className="text-[#4a3728] text-lg font-bold text-white">Edit Post</Text>
             <TouchableOpacity className="p-2 rounded-full bg-white/20" onPress={onClose} activeOpacity={0.7}>
               <CloseIcon />
             </TouchableOpacity>
           </View>
 
           {/* Body */}
-          <View className="p-5">
-            <Text className="text-[#4a3728] text-sm font-semibold mb-2">Post Title</Text>
+          <ScrollView className="p-5">
+            <Text className="text-[#4a3728] text-sm font-semibold mb-2">Post Title (Optional)</Text>
             <TextInput
               value={title}
               onChangeText={setTitle}
               placeholder="Enter your post title here..."
               placeholderTextColor="rgba(74,55,40,0.4)"
-              multiline
-              className="w-full px-4 py-3 border-2 border-[#e0d8cf] rounded-xl text-brand-dark text-sm bg-white/50"
-              style={{ height: 100, textAlignVertical: 'top' }}
+              selectionColor="#4a3728"
+              cursorColor="#4a3728"
+              style={{ color: '#4a3728' }}
+              className="w-full px-4 py-3 border border-[#e0d8cf] rounded-xl text-[#4a3728] text-sm bg-white/50 mb-4"
             />
-            <Text className="text-brand-dark/50 text-xs mt-1.5">{title.length} characters</Text>
-          </View>
+            
+            <Text className="text-[#4a3728] text-sm font-semibold mb-2">Post Content</Text>
+            <TextInput
+              value={content}
+              onChangeText={setContent}
+              placeholder="What do you want to talk about?"
+              placeholderTextColor="rgba(74,55,40,0.4)"
+              multiline
+              selectionColor="#4a3728"
+              cursorColor="#4a3728"
+              className="w-full px-4 py-3 border border-[#e0d8cf] rounded-xl text-[#4a3728] text-sm bg-white/50"
+              style={{ minHeight: 120, textAlignVertical: 'top', color: '#4a3728' }}
+            />
+            <Text className="text-brand-dark/50 text-xs mt-1.5 mb-5">{content.length} characters</Text>
+          </ScrollView>
 
           {/* Footer */}
           <View className="flex-row gap-3  px-5 py-4 bg-[#f6ede8] border-t border-[#e0d8cf]">
@@ -100,7 +118,7 @@ const UpdatePostModal: React.FC<UpdatePostModalProps> = ({
             >
               {isSubmitting
                 ? <ActivityIndicator color="#f6ede8" size="small" />
-                : <Text className="text-[#f6ede8] text-sm font-semibold">Update</Text>
+                : <Text className="text-[#f6ede8] text-sm font-semibold">Update Post</Text>
               }
             </TouchableOpacity>
           </View>

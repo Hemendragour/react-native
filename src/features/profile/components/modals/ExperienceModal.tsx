@@ -11,6 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { X } from 'lucide-react-native';
+import DatePickerField from '../../../../components/common/DatePickerField';
  
 interface ExperienceModalProps {
   isOpen: boolean;
@@ -60,6 +61,9 @@ const StyledInput: React.FC<{
     editable={editable}
     numberOfLines={multiline ? 4 : 1}
     textAlignVertical={multiline ? 'top' : 'center'}
+    selectionColor="#4a3728"
+    cursorColor="#4a3728"
+    style={{ color: '#4a3728' }}
     className={`w-full bg-white rounded-xl px-3 py-3 border border-[#d4c4b5] text-sm text-[#4a3728] ${
       multiline ? 'h-24' : ''
     } ${!editable ? 'opacity-50' : ''}`}
@@ -162,27 +166,24 @@ const ExperienceModal: React.FC<ExperienceModalProps> = ({
                   <View className="flex-row gap-x-3">
                     {/* Start Date */}
                     <View className="flex-1">
-                      <Text className="text-xs text-[#6b5038] font-semibold mb-1">Start Date *</Text>
-                      <TextInput
-                        placeholder="YYYY-MM-DD"
-                        placeholderTextColor="#a08060"
+                      <DatePickerField
+                        label="Start Date"
+                        required
+                        placeholder="Select date"
                         value={startDate}
-                        onChangeText={onStartDateChange}
-                        className="bg-white rounded-xl px-3 py-3 border border-[#d4c4b5] text-sm text-[#4a3728]"
+                        onChange={onStartDateChange}
+                        maximumDate={new Date()}
                       />
                     </View>
                     {/* End Date */}
                     <View className="flex-1">
-                      <Text className="text-xs text-[#6b5038] font-semibold mb-1">End Date</Text>
-                      <TextInput
-                        placeholder="YYYY-MM-DD"
-                        placeholderTextColor="#a08060"
-                        value={endDate}
-                        onChangeText={onEndDateChange}
-                        editable={!isCurrent}
-                        className={`bg-white rounded-xl px-3 py-3 border border-[#d4c4b5] text-sm text-[#4a3728] ${
-                          isCurrent ? 'opacity-40' : ''
-                        }`}
+                      <DatePickerField
+                        label="End Date"
+                        placeholder={isCurrent ? 'Present' : 'Select date'}
+                        value={isCurrent ? '' : endDate}
+                        onChange={onEndDateChange}
+                        disabled={isCurrent}
+                        disabledMessage="Disabled (currently working)"
                       />
                     </View>
                   </View>
@@ -244,8 +245,7 @@ const ExperienceModal: React.FC<ExperienceModalProps> = ({
                       className="flex-1 bg-white rounded-xl px-3 py-3 border border-[#d4c4b5] text-sm text-[#4a3728]"
                     />
                     <TouchableOpacity
-                      onPress={onAddAchievement}
-                      disabled={achievementsList.length >= 10}
+                      onPress={achievementsList.length >= 10 ? undefined : onAddAchievement}
                       activeOpacity={0.8}
                       className={`px-4 py-3 bg-[#4a3728] rounded-xl items-center justify-center ${
                         achievementsList.length >= 10 ? 'opacity-40' : ''
@@ -293,16 +293,14 @@ const ExperienceModal: React.FC<ExperienceModalProps> = ({
           {/* Footer */}
           <View className="flex-row gap-x-3 px-5 py-4 bg-[#f6ede8] border-t border-[#e0d8cf]">
             <TouchableOpacity
-              onPress={onClose}
-              disabled={isSaving}
+              onPress={isSaving ? undefined : onClose}
               activeOpacity={0.8}
               className="flex-1 py-3 bg-[#e0d8cf] rounded-xl items-center justify-center"
             >
               <Text className="text-[#4a3728] font-semibold text-sm">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={onSave}
-              disabled={isSaving}
+              onPress={isSaving ? undefined : onSave}
               activeOpacity={0.8}
               className={`flex-1 py-3 bg-[#4a3728] rounded-xl flex-row items-center justify-center gap-x-2 ${
                 isSaving ? 'opacity-70' : ''

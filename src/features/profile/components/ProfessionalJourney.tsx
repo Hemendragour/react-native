@@ -31,24 +31,7 @@ interface ProfessionalJourneyProps {
   experienceList?: any[];
 }
 
-// ─── Dummy Data ───────────────────────────────────────────────────────────────
-
-const DUMMY_ITEMS: JourneyItem[] = [
-  {
-    type: 'work',
-    title: 'Thronet Technology',
-    role: 'Full-Stack Developer',
-    company: 'Throne8',
-    period: '2023 – Present',
-  },
-  {
-    type: 'education',
-    title: 'Oriental College of Technology',
-    role: 'Bachelor of Technology',
-    company: 'Computer Science & Engineering',
-    period: '2016 – 2020',
-  },
-];
+// ─── Dummy Data Removed ───────────────────────────────────────────────────────
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -138,15 +121,15 @@ const ProfessionalJourney: React.FC<ProfessionalJourneyProps> = ({
   // ── Build items from real data ───────────────────────────────────────────
   const journeyItems: JourneyItem[] = [];
 
-  if (experienceList.length > 0) {
-    const exp       = experienceList.find((e: any) => e.current) || experienceList[0];
-    const startYear = exp.startDate ? new Date(exp.startDate).getFullYear() : '';
-    const endYear   = exp.endDate   ? new Date(exp.endDate).getFullYear()   : 'Present';
+  if (experienceList?.length > 0) {
+    const exp       = experienceList.find((e: any) => e.currentlyWorking || e.current) || experienceList[0];
+    const startYear = exp?.startDate ? new Date(exp.startDate).getFullYear() : '';
+    const endYear   = exp?.endDate   ? new Date(exp.endDate).getFullYear()   : 'Present';
     journeyItems.push({
       type: 'work',
-      title:   exp.company  || 'Company',
-      role:    exp.position || 'Position',
-      company: exp.company  || '',
+      title:   exp?.companyName || exp?.company || 'Company',
+      role:    exp?.currentPosition || exp?.position || 'Position',
+      company: exp?.companyName || exp?.company || '',
       period:  startYear ? `${startYear} – ${endYear}` : 'Present',
     });
   } else if (userProfileData?.onboarding?.userType === 'working') {
@@ -162,13 +145,13 @@ const ProfessionalJourney: React.FC<ProfessionalJourneyProps> = ({
     });
   }
 
-  if (educationList.length > 0) {
+  if (educationList?.length > 0) {
     const edu       = educationList[0];
     const startYear = edu.startDate ? new Date(edu.startDate).getFullYear() : '';
-    const endYear   = edu.isOngoing ? 'Present' : (edu.endDate ? new Date(edu.endDate).getFullYear() : 'Present');
+    const endYear   = edu.isOngoing || edu.current ? 'Present' : (edu.endDate ? new Date(edu.endDate).getFullYear() : 'Present');
     journeyItems.push({
       type: 'education',
-      title:   edu.schoolCollegeName || 'College',
+      title:   edu.schoolCollegeName || edu.schoolcollegename || 'College',
       role:    edu.degree            || 'Degree',
       company: edu.specialization    || edu.degreeType || '',
       period:  startYear ? `${startYear} – ${endYear}` : 'Present',
@@ -185,7 +168,11 @@ const ProfessionalJourney: React.FC<ProfessionalJourneyProps> = ({
     });
   }
 
-  const displayItems = journeyItems.length > 0 ? journeyItems : DUMMY_ITEMS;
+  if (journeyItems.length === 0) {
+    return null;
+  }
+
+  const displayItems = journeyItems;
   const isWorking    = displayItems.some(i => i.type === 'work');
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -215,9 +202,18 @@ const ProfessionalJourney: React.FC<ProfessionalJourneyProps> = ({
 
             {/* Description */}
             <Text className="text-[#6b4e3d] text-xs font-medium leading-relaxed mt-1">
-              {isWorking
-                ? 'Full-Stack Engineer crafting scalable systems and beautiful experiences at a rising tech startup.'
-                : 'Pursuing excellence in education and preparing for a bright future.'}
+              {(typeof userProfileData?.headline === 'string' &&
+                userProfileData.headline.trim().toLowerCase() !== 'user' &&
+                userProfileData.headline.trim().toLowerCase() !== 'admin' &&
+                userProfileData.headline.trim())
+                ? userProfileData.headline
+                : ((typeof userProfileData?.about === 'string' &&
+                    userProfileData.about.trim().toLowerCase() !== 'user' &&
+                    userProfileData.about.trim())
+                  ? userProfileData.about
+                  : (isWorking
+                    ? 'Full-Stack Engineer crafting scalable systems and beautiful experiences at a rising tech startup.'
+                    : 'Pursuing excellence in education and preparing for a bright future.'))}
             </Text>
           </View>
 

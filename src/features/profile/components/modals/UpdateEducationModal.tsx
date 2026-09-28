@@ -6,7 +6,10 @@ import {
   Modal, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { ChevronDown } from 'lucide-react-native';
+import PickerSheet from '../../../auth/components/PickerSheet';
 import { EducationData } from './AddEducationModal';
+import DatePickerField from '../../../../components/common/DatePickerField';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +34,10 @@ const DEGREE_TYPES = ["High School", "Diploma", "Bachelor's", "Master's", "Docto
 const EDU_TYPES    = ["full-time", "part-time", "distance", "online"];
 const GRADE_TYPES  = ["percentage", "cgpa", "gpa", "grade"];
 
+const VALID_DEGREES = [
+  'B.Tech', 'B.E', 'B.Sc', 'BCA', 'B.Com', 'B.A', 'M.Tech', 'M.E', 'M.Sc', 'MCA', 'M.Com', 'M.A', 'MBA', 'PhD', 'Diploma', 'Other'
+].map(d => ({ label: d, value: d }));
+
 // ─── Input Field ──────────────────────────────────────────────────────────────
 
 const Field = ({
@@ -47,8 +54,13 @@ const Field = ({
       placeholder={placeholder}
       placeholderTextColor="rgba(74,55,40,0.4)"
       multiline={multiline}
-      className={`w-full px-4 py-3 rounded-xl border-2 bg-white/50 text-brand-dark text-sm ${error ? 'border-red-400' : 'border-t border-[#d4c4b5]'}`}
-      style={multiline ? { height: 100, textAlignVertical: 'top' } : {}}
+      selectionColor="#4a3728"
+      cursorColor="#4a3728"
+      className={`w-full px-4 py-3 rounded-xl border-2 bg-white/50 text-[#4a3728] text-sm ${error ? 'border-red-400' : 'border-t border-[#d4c4b5]'}`}
+      style={{
+        color: '#4a3728',
+        ...(multiline ? { height: 100, textAlignVertical: 'top' } : {}),
+      }}
     />
     {error ? <Text className="text-red-500 text-xs mt-1">{error}</Text> : null}
   </View>
@@ -63,18 +75,21 @@ const SelectorRow = ({
     <Text className="text-brand-dark text-sm font-medium mb-2">{label}</Text>
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View className="flex-row gap-2">
-        {options.map((opt) => (
-          <TouchableOpacity
-            key={opt}
-            onPress={() => onSelect(opt)}
-            className={`px-3 py-2 rounded-full border ${value === opt ? 'bg-brand-dark border-brand-dark' : 'bg-[#4a3728] border-t border-[#d4c4b5]'}`}
-            activeOpacity={0.7}
-          >
-            <Text className={`text-xs font-medium ${value === opt ? 'text-brand-dark' : 'text-[#f6ede8]'}`}>
-              {opt}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {options.map((opt) => {
+          const isSelected = value === opt;
+          return (
+            <TouchableOpacity
+              key={opt}
+              onPress={() => onSelect(opt)}
+              className={`px-3 py-2 rounded-full border ${isSelected ? 'bg-[#4a3728] border-[#4a3728]' : 'bg-[#e0d8cf]/60 border-[#d4c4b5]'}`}
+              activeOpacity={0.7}
+            >
+              <Text className={`text-xs font-medium capitalize ${isSelected ? 'text-[#f6ede8]' : 'text-[#4a3728]'}`}>
+                {opt}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </ScrollView>
   </View>
@@ -88,6 +103,7 @@ const UpdateEducationModal: React.FC<UpdateEducationModalProps> = ({
   const [formData, setFormData]         = useState<EducationData | null>(null);
   const [errors, setErrors]             = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDegreePicker, setShowDegreePicker] = useState(false);
 
   // Prefill form when education data comes in
   useEffect(() => {
@@ -118,6 +134,12 @@ const UpdateEducationModal: React.FC<UpdateEducationModalProps> = ({
     if (!formData.schoolCollegeName.trim()) errs.schoolCollegeName = 'College name is required';
     if (!formData.degree.trim())            errs.degree = 'Degree is required';
     if (!formData.startDate)                errs.startDate = 'Start date is required';
+    if (formData.gradeType && !formData.gradeValue?.trim()) {
+      errs.gradeValue = 'Please enter grade value for selected grade type';
+    }
+    if (formData.endDate && formData.startDate && new Date(formData.endDate) < new Date(formData.startDate)) {
+      errs.endDate = 'End date must be after start date';
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -126,7 +148,6 @@ const UpdateEducationModal: React.FC<UpdateEducationModalProps> = ({
     if (!validate()) return;
     try {
       setIsSubmitting(true);
-      // await updateEducation({ id: educationData.educationId, ...formData }).unwrap();
       await onSubmit?.(formData);
       onClose();
     } catch (err: any) {
@@ -161,39 +182,65 @@ const UpdateEducationModal: React.FC<UpdateEducationModalProps> = ({
             placeholder="e.g., Oriental College of Technology"
              error={errors.schoolCollegeName} 
              />
-            <Field label="Degree" 
-            value={formData.degree} 
-            onChangeText={set('degree')} 
-            placeholder="e.g., B.Tech in Computer Science" 
-            error={errors.degree} 
+            <View className="mb-4">
+              <Text className="text-brand-dark text-sm font-medium mb-1.5">
+                Degree <Text className="text-red-500">*</Text>
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowDegreePicker(true)}
+                activeOpacity={0.8}
+                className={`flex-row items-center justify-between w-full px-4 py-3 rounded-xl border-2 bg-white/50 ${
+                  errors.degree ? 'border-red-400' : 'border-t border-[#d4c4b5]'
+                }`}
+              >
+                <Text className={`text-sm ${formData.degree ? 'text-brand-dark' : 'text-[#4a3728]/40'}`}>
+                  {formData.degree || "Select Degree"}
+                </Text>
+                <ChevronDown size={20} color="rgba(74,55,40,0.4)" />
+              </TouchableOpacity>
+              {errors.degree ? <Text className="text-red-500 text-xs mt-1">{errors.degree}</Text> : null}
+            </View>
+
+            <PickerSheet
+              visible={showDegreePicker}
+              title="Select Degree"
+              options={VALID_DEGREES}
+              selected={formData.degree}
+              onSelect={set('degree')}
+              onClose={() => setShowDegreePicker(false)}
             />
             <SelectorRow label="Degree Type" 
             options={DEGREE_TYPES} 
             value={formData.degreeType} 
             onSelect={(v) => setFormData(prev => prev ? ({ ...prev, degreeType: v as any }) : prev)} 
             />
-            <Field label="Start Date" 
-            value={formData.startDate} 
-            onChangeText={set('startDate')} 
-            placeholder="YYYY-MM-DD" 
-            error={errors.startDate}
-             />
-            <Field label="End Date" 
-            value={formData.endDate || ''} 
-            onChangeText={set('endDate')}
-             placeholder="YYYY-MM-DD" 
-             />
+            <DatePickerField
+              label="Start Date"
+              required
+              value={formData.startDate}
+              onChange={set('startDate')}
+              placeholder="Select start date"
+              error={errors.startDate}
+            />
+            <DatePickerField
+              label="End Date (leave empty if ongoing)"
+              value={formData.endDate || ''}
+              onChange={set('endDate')}
+              placeholder="Select end date"
+              error={errors.endDate}
+            />
             <SelectorRow label="Education Type" 
             options={EDU_TYPES} value={formData.educationType || ''}
-             onSelect={(v) => setFormData(prev => prev ? ({ ...prev, educationType: v as any }) : prev)} 
+             onSelect={(v) => setFormData(prev => prev ? ({ ...prev, educationType: prev.educationType === v ? undefined : v as any }) : prev)} 
              />
             <SelectorRow label="Grade Type" 
             options={GRADE_TYPES} value={formData.gradeType || ''} 
-            onSelect={(v) => setFormData(prev => prev ? ({ ...prev, gradeType: v as any }) : prev)}
+            onSelect={(v) => setFormData(prev => prev ? ({ ...prev, gradeType: prev.gradeType === v ? undefined : v as any }) : prev)}
              />
             <Field label="Grade Value" value={formData.gradeValue || ''} 
             onChangeText={set('gradeValue')} 
             placeholder="e.g., 8.75, 85%, A+" 
+            error={errors.gradeValue}
             />
             <Field label="Location" value={formData.location || ''} 
             onChangeText={set('location')}

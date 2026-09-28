@@ -3,6 +3,490 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
+  Modal,
+  ScrollView,
+  Platform,
+  TouchableOpacity,
+  Keyboard,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
+import Video from 'react-native-video';
+import { launchImageLibrary } from 'react-native-image-picker';
+import AuthService from '../../../services/auth.service';
+
+interface AboutSectionProps {
+  aboutData?: { aboutText?: string };
+  isLoading?: boolean;
+  onAboutCreated?: () => Promise<void>;
+  aboutId?: string;
+  videoUrl?: string;
+  onVideoUpload?: (file: {
+    uri: string;
+    name: string;
+    mimeType?: string;
+  }) => Promise<void>;
+  isUploadingVideo?: boolean;
+  isOwnProfile?: boolean;
+}
+
+const SafeVideo = ({ uri, paused }: { uri: string; paused: boolean }) => {
+  const [hasError, setHasError] = useState(false);
+  
+  if (hasError) {
+    return (
+      <View className="w-full h-40 rounded-xl bg-black items-center justify-center">
+        <Text className="text-white">Video unavailable</Text>
+      </View>
+    );
+  }
+  
+  return (
+    <Video
+      source={{ uri }}
+      style={{ width: '100%', height: 160, borderRadius: 12 }}
+      controls={true}
+      resizeMode="cover"
+      paused={paused}
+      onError={() => setHasError(true)}
+    />
+  );
+};
+
+const AboutSection: React.FC<AboutSectionProps> = ({
+  aboutData,
+  onAboutCreated,
+  aboutId,
+  videoUrl,
+  onVideoUpload: _onVideoUpload,
+  isUploadingVideo = false,
+  isOwnProfile = true,
+}) => {
+  const [isEditMode, setIsEditMode]   = useState(false);
+  const [aboutText, setAboutText]     = useState('');
+  const [isSaving, setIsSaving]       = useState(false);
+  const [error, setError]             = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Self-Contained Backend State
+  const [localAboutId, setLocalAboutId] = useState(aboutId || '');
+  const [localAboutText, setLocalAboutText] = useState(aboutData?.aboutText || '');
+  const [localVideoUrl, setLocalVideoUrl] = useState(videoUrl || '');
+  const [localIsUploadingVideo, setLocalIsUploadingVideo] = useState(isUploadingVideo || false);
+
+  const loadAboutData = async () => {
+    if (!isOwnProfile) return;
+    try {
+      const res = await AuthService.getAllAbout();
+
+      // API returns { data: { data: [...] } } — extract the active item from the array
+      const rawData = res?.data?.data || res?.data || res;
+      let aboutItem: any = null;
+
+      if (Array.isArray(rawData)) {
+        aboutItem = rawData.find((a: any) => a.isActive || a.active) || rawData[0];
+      } else if (rawData && typeof rawData === 'object') {
+        // Could be a single object or wrapped: { about: {...} }
+        aboutItem = rawData.about || rawData;
+      }
+
+      if (aboutItem) {
+        // Normalise: the actual text can be in aboutText, text, or description
+        const text = aboutItem.aboutText || aboutItem.text || aboutItem.description || '';
+        const id   = aboutItem.aboutId || aboutItem._id || aboutItem.id || '';
+        const vid  = aboutItem.coverStory?.videoUrl || aboutItem.videoUrl || aboutItem.introVideoUrl || '';
+
+        setLocalAboutId(id);
+        setLocalAboutText(text);
+        setLocalVideoUrl(vid);
+      } else {
+        setLocalAboutId('');
+        setLocalAboutText('');
+        setLocalVideoUrl('');
+      }
+    } catch (err) {
+      console.log('⚠️ Failed to load about details from backend:', err);
+    }
+  };
+
+  useEffect(() => {
+    // Sync with props when parent updates; self-fetch (loadAboutData) only for own profile
+    setLocalAboutId(aboutId || '');
+    setLocalAboutText(aboutData?.aboutText || '');
+    setLocalVideoUrl(videoUrl || '');
+    if (isOwnProfile && !aboutData?.aboutText) {
+      loadAboutData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aboutId, aboutData?.aboutText, videoUrl, isOwnProfile]);
+
+  const handleOpenModal = (editMode = false) => {
+    setIsEditMode(editMode);
+    setAboutText(editMode && localAboutText ? localAboutText : '');
+    setError('');
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setAboutText('');
+    setError('');
+    setIsEditMode(false);
+    Keyboard.dismiss();
+  };
+
+  const handleSave = async () => {
+    const trimmed = aboutText.trim();
+    if (!trimmed)                { setError('About text is required');                       return; }
+    if (trimmed.length < 50)     { setError('About text must be at least 50 characters');   return; }
+    if (trimmed.length > 2600)   { setError('About text cannot exceed 2600 characters');    return; }
+    if (!/^[A-Z]/.test(trimmed)) { setError('About text must start with a capital letter'); return; }
+
+    setIsSaving(true);
+    setError('');
+    try {
+      if (isEditMode && localAboutId) {
+        await AuthService.updateAbout(localAboutId, { aboutText: trimmed });
+      } else {
+        await AuthService.createAbout({ aboutText: trimmed });
+      }
+      if (onAboutCreated) await onAboutCreated();
+      await loadAboutData();
+      handleCloseModal();
+      Alert.alert('Success', 'Biography updated successfully!');
+    } catch (err: any) {
+      setError(err.message || 'Failed to save biography text');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleVideoPick = async () => {
+    if (!localAboutId) {
+      Alert.alert('Biography Required', 'Please add and save your "About Me" biography before uploading an introduction video.');
+      return;
+    }
+
+    try {
+      launchImageLibrary(
+        { mediaType: 'video', videoQuality: 'high' },
+        async (response) => {
+          if (response.didCancel) return;
+          if (response.errorCode) {
+            Alert.alert('Error', 'Could not pick video');
+            return;
+          }
+          const asset = response.assets?.[0];
+          if (!asset || !asset.uri) return;
+
+          if (asset.duration && asset.duration > 120) {
+            Alert.alert(
+              'Video Too Long', 
+              `Max video duration allowed is 120 seconds (2 minutes).\nSelected video is ${Math.round(asset.duration)} seconds.`
+            );
+            return;
+          }
+
+          if (asset.fileSize && asset.fileSize > 50 * 1024 * 1024) {
+            Alert.alert('File Too Large', 'Max file size allowed is 50MB. Please choose a smaller video.');
+            return;
+          }
+
+          setLocalIsUploadingVideo(true);
+          try {
+            console.log('🎥 Starting direct intro video upload for aboutId:', localAboutId);
+            await AuthService.uploadCoverStoryVideo(localAboutId, {
+              uri: asset.uri,
+              name: asset.fileName || 'intro_video.mp4',
+              mimeType: asset.type || 'video/mp4',
+            });
+            await loadAboutData();
+            if (onAboutCreated) await onAboutCreated();
+            Alert.alert('Success', 'Introduction video uploaded successfully!');
+          } catch (err: any) {
+            Alert.alert('Upload Failed', err.message || 'Failed to upload video.');
+          } finally {
+            setLocalIsUploadingVideo(false);
+          }
+        }
+      );
+    } catch {
+      Alert.alert('Error', 'Could not pick video. Please try again.');
+    }
+  };
+
+  return (
+    <View className="bg-[#f6ede8]/80 rounded-2xl p-4 border border-[#e0d8cf]/50 mb-6 mx-3">
+      {/* Header */}
+      <View className="flex-row items-center gap-3 mb-4">
+        <Text className="text-xl font-bold text-[#4a3728]">About</Text>
+      </View>
+
+      {/* About Me card */}
+      <View className="p-4 mb-3 bg-white/40 rounded-2xl border-2 border-dashed border-[#d4c4b5]">
+        <Text className="font-bold text-[#4a3728] mb-1">About Me</Text>
+        <Text className="text-[10px] text-[#8b6f47] mb-3 font-semibold">Constraint: 50 to 2600 characters, starts with a capital letter</Text>
+
+        {localAboutText ? (
+          <>
+            <Text className="text-sm text-[#4a3728]/90 leading-relaxed tracking-wide">
+              {localAboutText}
+            </Text>
+            {isOwnProfile && (
+              <TouchableOpacity
+                onPress={() => handleOpenModal(true)}
+                className="self-end mt-3 bg-[#4a3728]/10 px-3 py-1 rounded-md"
+                activeOpacity={0.7}
+              >
+                <Text className="text-xs text-[#4a3728] font-bold">✏ Edit</Text>
+              </TouchableOpacity>
+            )}
+          </>
+        ) : (
+          <View className="items-center py-5">
+            <Text className="text-sm text-[#8b6f47] mb-1">No about text added yet</Text>
+            {isOwnProfile && (
+              <TouchableOpacity
+                onPress={() => handleOpenModal(false)}
+                className="bg-[#4a3728] px-5 py-2 rounded-full"
+                activeOpacity={0.7}
+              >
+                <Text className="text-xs text-white font-semibold">+ Add About</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* Video card */}
+      <View className="p-4 bg-white/40 rounded-2xl border-2 border-dashed border-[#d4c4b5]">
+        <Text className="text-[#4a3728] font-bold mb-1">Introduction Video</Text>
+        <Text className="text-[10px] text-[#8b6f47] mb-3 font-semibold">Constraint: Max 120s duration, under 50MB file size</Text>
+
+        {localVideoUrl ? (
+          <View>
+            {Platform.OS === 'web' ? (
+              // @ts-ignore
+              <video 
+                src={localVideoUrl} 
+                controls 
+                style={{ width: '100%', height: 160, borderRadius: 12 }}
+              />
+            ) : (
+              <SafeVideo uri={localVideoUrl} paused={!isModalOpen} />
+            )}
+            {isOwnProfile && (
+              <TouchableOpacity
+                onPress={handleVideoPick}
+                disabled={localIsUploadingVideo}
+                className="absolute top-2 right-2 bg-[#4a3728]/80 px-3 py-1 rounded-md"
+                activeOpacity={0.7}
+              >
+                <Text className="text-white text-xs font-medium">
+                  {localIsUploadingVideo ? 'Uploading...' : '🔄 Replace'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <View className="h-40 rounded-xl bg-[#4a3728]/10 border border-[#8b6f47]/30 items-center justify-center gap-2">
+            <View className="w-11 h-11 rounded-full bg-[#4a3728]/20 border border-[#8b6f47]/30 items-center justify-center">
+              <Text className="text-xl">🎬</Text>
+            </View>
+            <Text className="text-sm text-[#8b6f47] text-center px-4">
+              {localIsUploadingVideo ? 'Uploading video...' : (isOwnProfile ? 'Upload your introduction video' : 'No introduction video')}
+            </Text>
+            {isOwnProfile && (
+              localIsUploadingVideo ? (
+                <ActivityIndicator color="#4a3728" />
+              ) : (
+                <TouchableOpacity
+                  onPress={handleVideoPick}
+                  className="mt-1 bg-[#4a3728] px-5 py-2 rounded-full"
+                  activeOpacity={0.7}
+                >
+                  <Text className="text-xs text-white font-semibold">Choose Video</Text>
+                </TouchableOpacity>
+              )
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* Modal */}
+      <Modal
+        visible={isModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={handleCloseModal}
+      >
+        {/* Backdrop */}
+        <TouchableOpacity
+          className="absolute inset-0 bg-black/40"
+          onPress={handleCloseModal}
+          activeOpacity={1}
+        />
+
+        {/* Bottom sheet */}
+        <View className="absolute bottom-0 left-0 right-0 bg-[#f6ede8] rounded-t-[36px] max-h-[88%] overflow-hidden border-t-2 border-[#e0d8cf]/40 shadow-2xl">
+          {/* Header */}
+          <View className="flex-row items-center justify-between bg-[#4a3728] px-5 py-4">
+            <View>
+              <Text className="text-xl font-bold text-white">
+                {isEditMode ? 'Edit About' : 'Add About'}
+              </Text>
+              <Text className="text-white/70 text-xs mt-1">
+                Tell people about yourself
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleCloseModal}
+              disabled={isSaving}
+              className="w-8 h-8 rounded-full bg-white/10 items-center justify-center"
+              activeOpacity={0.7}
+            >
+              <Text className="text-white text-base font-bold">✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView className="px-5 pt-5" keyboardShouldPersistTaps="handled">
+            {/* Error banner */}
+            {!!error && (
+              <View className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+                <Text className="text-sm text-red-600">{error}</Text>
+              </View>
+            )}
+
+            <Text className="text-sm font-bold text-[#4a3728] mb-2">
+              About Text <Text className="text-red-500">*</Text>
+            </Text>
+
+            {error ? (
+              <TextInput
+                value={aboutText}
+                onChangeText={(val) => { 
+                  setAboutText(val); 
+                  setError(''); 
+                }}
+                placeholder="Tell people about yourself..."
+                placeholderTextColor="#4a372888"
+                multiline
+                numberOfLines={8}
+                maxLength={2600}
+                textAlignVertical="top"
+                className="border-2 border-red-500 bg-red-50 rounded-xl px-4 py-3 text-sm text-[#4a3728] min-h-[180px]"
+              />
+            ) : (
+              <TextInput
+                value={aboutText}
+                onChangeText={(val) => { 
+                  setAboutText(val); 
+                  setError(''); 
+                }}
+                placeholder="Tell people about yourself... (min 50 chars, start with capital letter)"
+                placeholderTextColor="#4a372888"
+                multiline
+                numberOfLines={8}
+                maxLength={2600}
+                textAlignVertical="top"
+                className="border-2 border-[#e0d8cf] bg-white rounded-xl px-4 py-3 text-sm text-[#4a3728] min-h-[180px]"
+              />
+            )}
+
+            {/* Counter row */}
+            <View className="flex-row justify-between mt-2 mb-8">
+              <Text className="text-xs text-[#8b6f47]/80 flex-1 mr-2 font-medium">
+                Must start with a capital letter, min 50 characters
+              </Text>
+              {aboutText.length > 2600 ? (
+                <Text className="text-xs text-red-600 font-bold">{aboutText.length} / 2600</Text>
+              ) : (
+                <Text className="text-xs text-[#8b6f47] font-semibold">{aboutText.length} / 2600</Text>
+              )}
+            </View>
+          </ScrollView>
+
+          {/* Footer */}
+          <View className="flex-row gap-3 px-5 pt-3 pb-5 bg-white border-t border-[#e0d8cf]/50">
+            <FooterButtons
+              isSaving={isSaving}
+              canSave={!!aboutText.trim()}
+              isEditMode={isEditMode}
+              onCancel={handleCloseModal}
+              onSave={handleSave}
+            />
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
+
+// FooterButtons component
+interface FooterButtonsProps {
+  isSaving: boolean;
+  canSave: boolean;
+  isEditMode: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+}
+
+const FooterButtons: React.FC<FooterButtonsProps> = ({
+  isSaving,
+  canSave,
+  isEditMode,
+  onCancel,
+  onSave,
+}) => {
+  const disabled = isSaving || !canSave;
+
+  return (
+    <>
+      <TouchableOpacity
+        onPress={onCancel}
+        disabled={isSaving}
+        className="flex-1 py-3.5 rounded-full border-2 border-[#e0d8cf] items-center bg-[#4a3728]/5"
+        activeOpacity={0.7}
+      >
+        <Text className="text-base font-bold text-[#4a3728]">Cancel</Text>
+      </TouchableOpacity>
+
+      {disabled ? (
+        <View className="flex-1 py-3.5 rounded-full bg-[#4a3728]/45 items-center justify-center">
+          {isSaving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text className="text-base font-bold text-white/60">
+              {isEditMode ? 'Update About' : 'Add About'}
+            </Text>
+          )}
+        </View>
+      ) : (
+        <TouchableOpacity
+          onPress={onSave}
+          className="flex-1 py-3.5 rounded-full bg-[#4a3728] items-center justify-center shadow-sm"
+          activeOpacity={0.7}
+        >
+          <Text className="text-base font-bold text-white">
+            {isEditMode ? 'Update About' : 'Add About'}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </>
+  );
+};
+
+export default React.memo(AboutSection);
+
+/* ==========================================
+   OLD CODE REFERENCE (Do not use / For reference only)
+==========================================
+// src/components/profile/AboutSection.tsx
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
   TouchableOpacity,
   TextInput,
   Modal,
@@ -119,13 +603,13 @@ const AboutSection: React.FC<AboutSectionProps> = ({
   return (
     <View className="bg-[#f6ede8]/80 rounded-2xl p-4 border border-[#e0d8cf]/50 mb-6 mx-3">
 
-      {/* ── Header ── */}
+      {/* ── Header ── * /}
       <View className="flex-row items-center gap-3 mb-4">
         
         <Text className="text-xl font-bold text-[#4a3728]">About</Text>
       </View>
 
-      {/* ── About Me card ── */}
+      {/* ── About Me card ── * /}
       <View className=" p-4 mb-3 bg-white/40 rounded-2xl border-2 border-dashed border-[#d4c4b5]">
         <Text className=" font-semibold text-[#4a3728] mb-2">About Me</Text>
 
@@ -154,7 +638,7 @@ const AboutSection: React.FC<AboutSectionProps> = ({
         )}
       </View>
 
-      {/* ── Video card ── */}
+      {/* ── Video card ── * /}
       <View className=" p-4 bg-white/40 rounded-2xl border-2 border-dashed border-[#d4c4b5]">
         <Text className="text-[#4a3728] font-semibold  mb-1">Introduction Video</Text>
 
@@ -165,6 +649,7 @@ const AboutSection: React.FC<AboutSectionProps> = ({
               className="w-full h-40 rounded-xl bg-black"
               controls={true}
               resizeMode="cover"
+              paused={true}
             />
             <TouchableOpacity
               onPress={handleVideoPick}
@@ -200,24 +685,24 @@ const AboutSection: React.FC<AboutSectionProps> = ({
 
       {/* ══════════════════════════════
           Modal
-      ══════════════════════════════ */}
+      ══════════════════════════════ * /}
       <Modal
         visible={isModalOpen}
         animationType="slide"
         transparent
         onRequestClose={handleCloseModal}
       >
-        {/* Backdrop */}
+        {/* Backdrop * /}
         <TouchableOpacity
           className="absolute inset-0 bg-black/40"
           activeOpacity={1}
           onPress={handleCloseModal}
         />
 
-        {/* Bottom sheet */}
+        {/* Bottom sheet * /}
         <View className="absolute bottom-0 left-0 right-0 bg-[#f6ede8] rounded-t-3xl max-h-[88%] overflow-hidden">
 
-          {/* Header */}
+          {/* Header * /}
           <View className="flex-row items-center justify-between bg-brown px-3 py-2">
             <View>
               <Text className="text-xl font-bold text-[#4a3728]">
@@ -238,7 +723,7 @@ const AboutSection: React.FC<AboutSectionProps> = ({
 
           <ScrollView className="px-5 pt-5" keyboardShouldPersistTaps="handled">
 
-            {/* Error banner */}
+            {/* Error banner * /}
             {!!error && (
               <View className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
                 <Text className="text-sm text-red-600">{error}</Text>
@@ -255,7 +740,7 @@ const AboutSection: React.FC<AboutSectionProps> = ({
               Iske bajaye do alag components render karo condition ke basis pe.
               NativeWind build time pe classes extract karta hai —
               runtime mein bani strings bundle mein nahi hoti.
-            */}
+            * /}
             {error ? (
               <TextInput
                 value={aboutText}
@@ -282,7 +767,7 @@ const AboutSection: React.FC<AboutSectionProps> = ({
               />
             )}
 
-            {/* Counter row — same pattern */}
+            {/* Counter row — same pattern * /}
             <View className="flex-row justify-between mt-2 mb-5">
               <Text className="text-xs text-brown/60 flex-1 mr-2">
                 Must start with capital letter, min 50 characters
@@ -295,7 +780,7 @@ const AboutSection: React.FC<AboutSectionProps> = ({
             </View>
           </ScrollView>
 
-          {/* Footer */}
+          {/* Footer * /}
           {Platform.OS === 'ios' ? (
             <View className="flex-row gap-3 px-5 pt-3 pb-8 bg-white border-t border-beige/80">
               <FooterButtons
@@ -383,3 +868,4 @@ const FooterButtons: React.FC<FooterButtonsProps> = ({
 };
 
 export default AboutSection;
+========================================== */

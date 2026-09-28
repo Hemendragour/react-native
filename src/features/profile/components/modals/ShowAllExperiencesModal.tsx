@@ -75,7 +75,7 @@ const ShowAllExperiencesModal: React.FC<ShowAllExperiencesModalProps> = ({
               )}
               <View>
                 <Text className="text-xl font-bold text-[#4a3728]">
-                  {view === 'detail' && selectedExp ? selectedExp.company.split(' (')[0] : 'All Experiences'}
+                  {view === 'detail' && selectedExp ? (selectedExp.company || '').split(' (')[0] : 'All Experiences'}
                 </Text>
                 <Text className="text-xs text-[#8b6f47] mt-0.5">
                   {view === 'detail' && selectedExp
@@ -131,7 +131,7 @@ const ShowAllExperiencesModal: React.FC<ShowAllExperiencesModalProps> = ({
                           }`}
                           numberOfLines={1}
                         >
-                          {exp.company.split(' (')[0]}
+                          {(exp.company || '').split(' (')[0]}
                         </Text>
                         <Text
                           className={`text-xs font-medium mt-0.5 ${
@@ -223,7 +223,7 @@ const ShowAllExperiencesModal: React.FC<ShowAllExperiencesModalProps> = ({
                 </View>
  
                 {/* Achievements */}
-                {selectedExp.achievements.length > 0 && (
+                {Array.isArray(selectedExp.achievements) && selectedExp.achievements.length > 0 && (
                   <View className="bg-[#e0d8cf]/70 rounded-2xl p-4 border border-[#d4c4b5]">
                     <Text className="text-xs font-bold text-[#4a3728] uppercase mb-3">
                       Key Achievements

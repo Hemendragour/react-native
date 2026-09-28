@@ -6,14 +6,18 @@ import {
   Modal,
   ScrollView,
   Pressable,
+  Share,
+  Alert,
 } from 'react-native';
 import { X, ChevronDown, Share2, FileDown, Bookmark, Activity, Info } from 'lucide-react-native';
- 
+
 interface ResourcesModalProps {
   isOpen: boolean;
   onClose: () => void;
+  userName?: string;
+  onShowActivity?: () => void;
 }
- 
+
 interface Resource {
   id: string;
   title: string;
@@ -22,34 +26,47 @@ interface Resource {
   Icon: React.ElementType;
   onAction: () => void;
 }
- 
-const ResourcesModal: React.FC<ResourcesModalProps> = ({ isOpen, onClose }) => {
+
+const ResourcesModal: React.FC<ResourcesModalProps> = ({ isOpen, onClose, userName = 'User', onShowActivity }) => {
   const [expandedResources, setExpandedResources] = useState<Record<string, boolean>>({});
- 
+
   const resources: Resource[] = [
     {
       id: 'message',
       title: 'Send profile in a message',
       description: 'Share your profile link with a message to your connections',
-      buttonLabel: 'Send Message',
+      buttonLabel: 'Share Profile',
       Icon: Share2,
-      onAction: () => console.log('Send profile'),
+      onAction: async () => {
+        try {
+          await Share.share({
+            title: 'Throne8 Profile',
+            message: `Check out ${userName}'s profile on Throne8: https://throne8.com/profile`,
+          });
+        } catch (e: any) {
+          console.log('Share error:', e);
+        }
+      },
     },
     {
       id: 'pdf',
       title: 'Save to PDF',
       description: 'Download your profile as a PDF document',
-      buttonLabel: 'Download PDF',
+      buttonLabel: 'Download Summary',
       Icon: FileDown,
-      onAction: () => console.log('Save to PDF'),
+      onAction: () => {
+        Alert.alert('PDF Summary', 'Your resume and profile summary will be generated and saved to your device.');
+      },
     },
     {
       id: 'saved',
       title: 'Saved items',
-      description: 'View all your saved items and collections',
+      description: 'View all your saved posts and collections',
       buttonLabel: 'View Saved Items',
       Icon: Bookmark,
-      onAction: () => console.log('View saved items'),
+      onAction: () => {
+        Alert.alert('Saved Items', 'Access your bookmarked posts and group resources from your feed.');
+      },
     },
     {
       id: 'activity',
@@ -57,15 +74,23 @@ const ResourcesModal: React.FC<ResourcesModalProps> = ({ isOpen, onClose }) => {
       description: 'Check your profile activity and engagement stats',
       buttonLabel: 'View Activity',
       Icon: Activity,
-      onAction: () => console.log('View activity'),
+      onAction: () => {
+        onClose();
+        onShowActivity?.();
+      },
     },
     {
       id: 'about',
       title: 'About this profile',
       description: 'Learn more about how profiles work and best practices',
-      buttonLabel: 'Learn More',
+      buttonLabel: 'Profile Info',
       Icon: Info,
-      onAction: () => console.log('About profile'),
+      onAction: () => {
+        Alert.alert(
+          'About Throne8 Profile',
+          'Your profile showcases your real-time verified skills, academic timeline, career experiences, study group participation, and published media.'
+        );
+      },
     },
   ];
  
