@@ -1,11 +1,9 @@
-// features/home/components/sidebar/MyGroups.tsx
-
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
-
-// ─── Icon ─────────────────────────────────────────────────────────────────────
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { fetchMyGroups } from '../../study/store/groupsSlice';
 
 const ChevronIcon = () => (
   <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
@@ -19,53 +17,60 @@ const GroupIcon = () => (
   </Svg>
 );
 
-// ─── Dummy data ───────────────────────────────────────────────────────────────
-
-export const GROUPS_DATA = [
-  { id: '1', name: 'The Squad',  members: '5K', description: 'A group for the core team', avatar: 'https://i.pravatar.cc/150?img=1' },
-  { id: '2', name: 'The A-team', members: '8K', description: 'High performance professionals', avatar: 'https://i.pravatar.cc/150?img=2' },
-  { id: '3', name: 'Tech 2k25',  members: '7K', description: 'Latest in tech for 2025', avatar: 'https://i.pravatar.cc/150?img=3' },
-];
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
 const MyGroups: React.FC = () => {
-  // const navigation = useNavigation<any>();
+  const navigation = useNavigation<any>();
+  const dispatch = useAppDispatch();
+  const groups = useAppSelector(s => s.groups.items);
+
+  useEffect(() => {
+    dispatch(fetchMyGroups());
+  }, [dispatch]);
+
+  const displayGroups = groups.slice(0, 5);
 
   return (
     <View className="mx-3 mt-3">
-
       {/* Section header */}
       <View className="flex-row items-center justify-between mb-2 px-1">
-        <Text className="text-[#4a3728] text-base font-black">My Groups</Text>
+        <Text className="text-[#2c1d11] text-base font-black tracking-tight">My Groups</Text>
         <TouchableOpacity
-          // onPress={() => navigation.navigate('MyGroupsScreen')}
+          onPress={() => navigation.navigate('Study', { screen: 'MyGroups' })}
           activeOpacity={0.7}
         >
-          <Text className="text-xs font-semibold" style={{ color: '#6b5643' }}>See all</Text>
+          <Text className="text-xs font-bold" style={{ color: '#6b5643' }}>See all →</Text>
         </TouchableOpacity>
       </View>
 
       {/* Group rows */}
-      {GROUPS_DATA.map((group) => (
+      {displayGroups.length === 0 ? (
         <TouchableOpacity
-          key={group.id}
-          className="flex-row items-center justify-between bg-white/40 rounded-xl px-3 py-3 mb-2 border-2 border-dashed border-[#d4c4b5]"
-          // onPress={() => navigation.navigate('MyGroupsScreen', { groupId: group.id })}
+          className="flex-row items-center justify-center bg-white/70 rounded-2xl px-3 py-4 mb-2 border border-[#4a3728]/10"
+          onPress={() => navigation.navigate('Study', { screen: 'MyGroups' })}
           activeOpacity={0.75}
         >
-          <View className="flex-row items-center gap-3">
-            <View className="w-9 h-9 rounded-xl bg-brand-dark/10 items-center justify-center">
-              <GroupIcon />
-            </View>
-            <View>
-              <Text className="text-[#6b5038] text-sm font-bold">{group.name}</Text>
-              <Text className="text-[#6b5038] text-xs">{group.members} members</Text>
-            </View>
-          </View>
-          <ChevronIcon />
+          <Text className="text-[#6b5643] text-xs font-semibold">No groups joined yet — Tap to browse</Text>
         </TouchableOpacity>
-      ))}
+      ) : (
+        displayGroups.map((group) => (
+          <TouchableOpacity
+            key={group.id}
+            className="flex-row items-center justify-between bg-white/80 rounded-2xl px-3 py-3 mb-2 border border-[#4a3728]/10 active:bg-white"
+            onPress={() => navigation.navigate('Study', { screen: 'GroupRoom', params: { groupId: group.id, groupName: group.title } })}
+            activeOpacity={0.75}
+          >
+            <View className="flex-row items-center gap-3 flex-1 mr-2">
+              <View className="w-10 h-10 rounded-xl bg-[#4a3728]/10 items-center justify-center border border-[#4a3728]/10">
+                <GroupIcon />
+              </View>
+              <View className="flex-1">
+                <Text className="text-[#2c1d11] text-sm font-bold" numberOfLines={1}>{group.title}</Text>
+                <Text className="text-[#6b5643] text-xs font-medium">{group.members} members</Text>
+              </View>
+            </View>
+            <ChevronIcon />
+          </TouchableOpacity>
+        ))
+      )}
     </View>
   );
 };

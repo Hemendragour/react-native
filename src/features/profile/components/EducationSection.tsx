@@ -1,12 +1,11 @@
-// features/profile/components/EducationSection.tsx
-
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import AddEducationModal, { EducationData } from './/modals/AddEducationModal';
 import UpdateEducationModal from './/modals/UpdateEducationModal';
 import SelectEducationModal from './/modals/SelectEducationModal';
 import EducationMenuPopup from './/modals/EducationMenuPopup';
+import AuthService from '../../../services/auth.service';
 
 // ─── Dummy Data (matches screenshot 2) ───────────────────────────────────────
 
@@ -35,6 +34,11 @@ interface EducationSectionProps {
   degree?: string;
   fieldOfStudy?: string;
   graduationYear?: string;
+
+  educationIds?: string[];
+  educationList?: any[];
+  onDataRefresh?: () => void;
+  isOwnProfile?: boolean;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -99,10 +103,12 @@ const EducationCard = ({
   education,
   onMenuPress,
   onEditPress,
+  isOwnProfile = true,
 }: {
   education: typeof DUMMY_EDUCATION[0];
   onMenuPress: (id: string) => void;
   onEditPress: (edu: any) => void;
+  isOwnProfile?: boolean;
 }) => (
   <View className="bg-white/40 rounded-2xl p-4  border-2 border-dashed border-[#d4c4b5]">
 
@@ -155,13 +161,15 @@ const EducationCard = ({
     ) : null}
 
     {/* Menu dots */}
-    <TouchableOpacity
-      className="absolute top-3 right-3 w-8 h-8 items-center justify-center"
-      onPress={() => onMenuPress(education.educationId)}
-      activeOpacity={0.7}
-    >
-      <DotsIcon />
-    </TouchableOpacity>
+    {isOwnProfile && (
+      <TouchableOpacity
+        className="absolute top-3 right-3 w-8 h-8 items-center justify-center"
+        onPress={() => onMenuPress(education.educationId)}
+        activeOpacity={0.7}
+      >
+        <DotsIcon />
+      </TouchableOpacity>
+    )}
 
   </View>
 );
@@ -173,8 +181,12 @@ const EducationSection: React.FC<EducationSectionProps> = ({
   degree = '',
   fieldOfStudy = '',
   graduationYear = '',
+
+  educationList: initialEducationList = [],
+  onDataRefresh,
+  isOwnProfile = true
 }) => {
-  const [educationList, setEducationList]                   = useState<any[]>(DUMMY_EDUCATION);
+  const [educationList, setEducationList]                   = useState<any[]>(initialEducationList);
   const [isLoading, setIsLoading]                           = useState(false);
   const [selectedEducation, setSelectedEducation]           = useState<any>(null);
   const [openMenuId, setOpenMenuId]                         = useState<string | null>(null);
@@ -182,13 +194,72 @@ const EducationSection: React.FC<EducationSectionProps> = ({
   const [isUpdateModalOpen, setIsUpdateModalOpen]           = useState(false);
   const [isSelectModalOpen, setIsSelectModalOpen]           = useState(false);
 
-  // Wire up real data when ready:
-  // const { educationList, isLoadingEducation, loadEducation, selectEducation, selectedEducation } = useEducation();
-  // useEffect(() => { loadEducation(); }, []);
+  const loadEducation = async () => {
+    try {
+      setIsLoading(true);
+      console.log("EducationSection rendered");
+      const response = await AuthService.getAllEducation();
+      console.log('📚 [EDUCATION] Raw API response:', JSON.stringify(response, null, 2));
+      // old code (wrong key name):
+      // const fetchedList = response?.data?.education || response?.education || ...
+      // ✅ new code: backend returns { data: { educationList: [...] } }
+      const fetchedList = response?.data?.educationList || response?.educationList || response?.data?.education || (Array.isArray(response?.data) ? response.data : []) || [];
+      if (Array.isArray(fetchedList)) {
+        // Sort by start date descending
+        const sortedList = [...fetchedList].sort((a, b) => 
+          new Date(b.startDate || '1970-01-01').getTime() - new Date(a.startDate || '1970-01-01').getTime()
+        );
+        setEducationList(sortedList);
+        console.log("loadEducation called");
+      }
+    } catch (error) {
+      console.log('⚠️ Failed to fetch education from backend:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const hasFetchedRef = useRef(false);
+
+  useEffect(() => {
+    // For other users' profiles, data must strictly come via props
+    if (!isOwnProfile) {
+      if (initialEducationList && initialEducationList.length > 0) {
+        setEducationList(initialEducationList);
+      } else {
+        setEducationList([]);
+      }
+      return;
+    }
+
+    // If parent passes real education data, use it
+    if (initialEducationList && initialEducationList.length > 0) {
+      setEducationList(prev => JSON.stringify(prev) === JSON.stringify(initialEducationList) ? prev : initialEducationList);
+      hasFetchedRef.current = true;
+      return;
+    }
+
+    // Only fetch from backend ONCE if parent didn't provide data
+    if (!hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      loadEducation();
+    }
+  }, [initialEducationList, isOwnProfile]);
 
   const handleAddEducation = async (data: EducationData) => {
-    // await loadEducation();   ← uncomment when API ready
-    setIsAddModalOpen(false);
+    try {
+      setIsLoading(true);
+      await AuthService.createEducation(data as any);
+      await loadEducation();
+      onDataRefresh?.();
+      setIsAddModalOpen(false);
+    } catch (error: any) {
+      console.error('Failed to add education:', error);
+      Alert.alert('Error', error.message || 'Failed to add education');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleUpdateEducation = (education: any) => {
@@ -205,8 +276,9 @@ const EducationSection: React.FC<EducationSectionProps> = ({
     }
   };
 
-  const handleEducationDeleted = () => {
-    // reload after delete — replace with loadEducation() when API ready
+  const handleEducationDeleted = async () => {
+    await loadEducation();
+    onDataRefresh?.();
     setOpenMenuId(null);
   };
 
@@ -227,26 +299,28 @@ const EducationSection: React.FC<EducationSectionProps> = ({
           </View>
 
           {/* Add + Update buttons */}
-          <View className="flex-row gap-2">
-            <TouchableOpacity
-              className="flex-row items-center gap-1.5 bg-brand-dark px-3 py-2 rounded-xl"
-              onPress={() => setIsAddModalOpen(true)}
-              activeOpacity={0.8}
-            >
-              <PlusIcon />
-              <Text className="text-[#4a3728] text-xs font-semibold">Add</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              className={`flex-row items-center gap-1.5 px-3 py-2 rounded-xl ${educationList.length === 0 ? 'bg-brand-dark/40' : 'bg-brand-dark'}`}
-              onPress={handleOpenUpdate}
-              disabled={educationList.length === 0}
-              activeOpacity={0.8}
-            >
-              <EditIcon />
-              <Text className="text-[#4a3728] text-xs font-semibold">Update</Text>
-            </TouchableOpacity>
-          </View>
+          {isOwnProfile && (
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                className="flex-row items-center gap-1.5 bg-brand-dark px-3 py-2 rounded-xl"
+                onPress={() => setIsAddModalOpen(true)}
+                activeOpacity={0.8}
+              >
+                <PlusIcon />
+                <Text className="text-[#4a3728] text-xs font-semibold">Add</Text>
+              </TouchableOpacity>
+  
+              <TouchableOpacity
+                className={`flex-row items-center gap-1.5 px-3 py-2 rounded-xl ${educationList.length === 0 ? 'bg-brand-dark/40' : 'bg-brand-dark'}`}
+                onPress={handleOpenUpdate}
+                disabled={educationList.length === 0}
+                activeOpacity={0.8}
+              >
+                <EditIcon />
+                <Text className="text-[#4a3728] text-xs font-semibold">Update</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* ── Loading ─────────────────────────────────────────────────── */}
@@ -264,15 +338,17 @@ const EducationSection: React.FC<EducationSectionProps> = ({
             </View>
             <Text className="text-brand-dark text-base font-semibold">No education added yet</Text>
             <Text className="text-brand-medium text-sm text-center">
-              Add your education details to showcase your academic background
+              {isOwnProfile ? 'Add your education details to showcase your academic background' : 'No education details added yet.'}
             </Text>
-            <TouchableOpacity
-              className="bg-brand-dark px-6 py-3 rounded-2xl mt-1"
-              onPress={() => setIsAddModalOpen(true)}
-              activeOpacity={0.8}
-            >
-              <Text className="text-brand-light text-sm font-semibold">Add Education</Text>
-            </TouchableOpacity>
+            {isOwnProfile && (
+              <TouchableOpacity
+                className="bg-brand-dark px-6 py-3 rounded-2xl mt-1"
+                onPress={() => setIsAddModalOpen(true)}
+                activeOpacity={0.8}
+              >
+                <Text className="text-brand-light text-sm font-semibold">Add Education</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
         /* ── Education list ───────────────────────────────────────────── */
@@ -284,15 +360,18 @@ const EducationSection: React.FC<EducationSectionProps> = ({
                   education={edu}
                   onMenuPress={(id) => setOpenMenuId(openMenuId === id ? null : id)}
                   onEditPress={handleUpdateEducation}
+                  isOwnProfile={isOwnProfile}
                 />
 
                 {/* Menu popup */}
-                <EducationMenuPopup
-                  educationId={edu.educationId}
-                  isOpen={openMenuId === edu.educationId}
-                  onClose={() => setOpenMenuId(null)}
-                  onEducationDeleted={handleEducationDeleted}
-                />
+                {isOwnProfile && (
+                  <EducationMenuPopup
+                    educationId={edu.educationId}
+                    isOpen={openMenuId === edu.educationId}
+                    onClose={() => setOpenMenuId(null)}
+                    onEducationDeleted={handleEducationDeleted}
+                  />
+                )}
               </View>
             ))}
           </View>
@@ -325,8 +404,22 @@ const EducationSection: React.FC<EducationSectionProps> = ({
           setSelectedEducation(null);
         }}
         educationData={selectedEducation}
-        onSubmit={async () => {
-          setIsUpdateModalOpen(false);
+        onSubmit={async (data) => {
+          if (!selectedEducation?.educationId) return;
+          try {
+            setIsLoading(true);
+            await AuthService.updateEducation(selectedEducation.educationId, data as any);
+            await loadEducation();
+            onDataRefresh?.();
+            setIsUpdateModalOpen(false);
+            setSelectedEducation(null);
+          } catch (error: any) {
+            console.error('Failed to update education:', error);
+            Alert.alert('Error', error.message || 'Failed to update education');
+            throw error;
+          } finally {
+            setIsLoading(false);
+          }
         }}
       />
     </View>

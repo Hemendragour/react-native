@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, Pressable, ActivityIndicator, Alert } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import AuthService from '../../../../services/auth.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,10 +48,11 @@ const EducationMenuPopup: React.FC<EducationMenuPopupProps> = ({
     if (isArchiving) return;
     try {
       setIsArchiving(true);
-      // await archiveEducationRecord(educationId).unwrap();  ← uncomment when API ready
+      await AuthService.archiveEducation(educationId);
       onEducationArchived?.();
       onClose();
     } catch (err: any) {
+      console.error(err);
       Alert.alert('Error', err.message || 'Failed to archive education');
     } finally {
       setIsArchiving(false);
@@ -61,10 +63,11 @@ const EducationMenuPopup: React.FC<EducationMenuPopupProps> = ({
     if (isDeleting) return;
     try {
       setIsDeleting(true);
-      // await removeEducation(educationId).unwrap();  ← uncomment when API ready
+      await AuthService.deleteEducation(educationId);
       onEducationDeleted?.();
       onClose();
     } catch (err: any) {
+      console.error(err);
       Alert.alert('Error', err.message || 'Failed to delete education');
     } finally {
       setIsDeleting(false);

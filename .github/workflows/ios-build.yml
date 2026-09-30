@@ -1,0 +1,58 @@
+name: Build Unsigned iOS App
+
+on:
+  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
+
+jobs:
+  build:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Adjust if you use a different version
+          cache: 'npm'
+
+      - name: Install JavaScript dependencies
+        run: npm install
+
+      - name: Setup Ruby (for CocoaPods)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0'
+          bundler-cache: true
+
+      - name: Install CocoaPods
+        run: cd ios && pod install
+
+      - name: Build Unsigned iOS App
+        run: |
+          cd ios
+          xcodebuild clean archive \
+            -workspace throne8.xcworkspace \
+            -scheme throne8 \
+            -configuration Release \
+            -archivePath $PWD/build/throne8.xcarchive \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Convert to .ipa
+        run: |
+          cd ios
+          mkdir -p Payload
+          # Copy the .app file into the Payload directory
+          cp -r build/throne8.xcarchive/Products/Applications/throne8.app Payload/
+          # Zip it up to create the .ipa
+          zip -r ../throne8.ipa Payload
+
+      - name: Upload .ipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: throne8-ios-app
+          path: throne8.ipa
+          retention-days: 5

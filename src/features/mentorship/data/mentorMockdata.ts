@@ -56,13 +56,17 @@ export const NEXT_7_DAYS = [
 
 export const DASHBOARD_MENU_ITEMS = [
   { id: 'profile',      label: 'Profile',       icon: '👤' },
+  { id: 'dashboard',    label: 'Overview',      icon: '📊' },
   { id: 'services',     label: 'Services',      icon: '🛠️' },
   { id: 'booking',      label: 'Bookings',      icon: '📅' },
+  { id: 'queries',      label: 'Queries',       icon: '❓' },
   { id: 'availability', label: 'Availability',  icon: '🕐' },
   { id: 'payment',      label: 'Payments',      icon: '💳' },
   { id: 'review',       label: 'Reviews',       icon: '⭐' },
-  { id: 'analytics',    label: 'Analytics',     icon: '📊' },
+  { id: 'analytics',    label: 'Analytics',     icon: '📈' },
+  { id: 'marketing',    label: 'Marketing Kit', icon: '📦' },
   { id: 'plans',        label: 'Plans',         icon: '🏆' },
   { id: 'trust',        label: 'Trust Score',   icon: '🛡️' },
   { id: 'community',    label: 'Community',     icon: '👥' },
+  { id: 'notification', label: 'Notification',  icon: '🔔' },
 ];

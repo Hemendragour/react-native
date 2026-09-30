@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, ActivityIndicator,
+  View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Image
 } from 'react-native';
 import { C, SESSION_TYPE_FILTER, SESSION_TYPE_LABEL } from '../data/mentorData';
 import type { Service } from '../data/mentortypes';
 
-// TODO: import SessionService from '@/lib/api/session.service';
+import SessionService from '../../../services/session.service';
 
 interface ServicesSectionProps {
   onServiceClick: (service: Service) => void;
@@ -23,10 +23,10 @@ const ServicesSection: React.FC<ServicesSectionProps> = ({
 
   useEffect(() => {
     if (!mentorId) { setLoading(false); return; }
-    // TODO: Replace with SessionService.getAllSessionsFromDB({ limit: 50 })
-    //   .then(res => { const all = res?.data ?? []; setSessions(all.filter(s => s.mentorId === mentorId)); })
-    //   .finally(() => setLoading(false));
-    setLoading(false); // stub
+    SessionService.getMentorSessions(mentorId)
+      .then(res => setSessions((res.data || []).filter((s: any) => s.status !== 'deleted' && s.status !== 'cancelled')))
+      .catch(err => console.error("Failed to fetch services", err))
+      .finally(() => setLoading(false));
   }, [mentorId]);
 
   const uniqueTypes = Array.from(new Set(sessions.map((s) => s.sessionType)));
@@ -37,12 +37,13 @@ const ServicesSection: React.FC<ServicesSectionProps> = ({
     : sessions.filter((s) => (SESSION_TYPE_FILTER[s.sessionType] || s.sessionType) === activeFilter);
 
   const getServiceFromSession = (session: any): Service => ({
-    id: session.sessionId,
+    id: session.sessionId || session._id || session.id || '',
     type: SESSION_TYPE_LABEL[session.sessionType] || '1:1 Call',
     title: session.title,
-    duration: `${session.duration} Min`,
+    duration: `${session.duration || 30} Min`,
     originalPrice: null,
-    price: session.pricing?.basePrice === 0 ? 'Free' : session.pricing?.basePrice,
+    price: session.pricing?.basePrice === 0 ? 'Free' : (session.pricing?.basePrice ?? session.price ?? 0),
+    pricing: session.pricing,
     popular: false,
   });
 
@@ -54,9 +55,9 @@ const ServicesSection: React.FC<ServicesSectionProps> = ({
       {/* Filters */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
         <View className="flex-row gap-x-2 pr-2">
-          {dynamicFilters.map((f) => (
+          {dynamicFilters.map((f, i) => (
             <TouchableOpacity
-              key={f}
+              key={`filter-${f}-${i}`}
               onPress={() => setActiveFilter(f)}
               activeOpacity={0.8}
               className={`px-4 py-2 rounded-full ${activeFilter === f ? 'bg-[#4a3728]' : 'bg-[#e0d8cf]'}`}
@@ -87,7 +88,7 @@ const ServicesSection: React.FC<ServicesSectionProps> = ({
       {/* Session Cards — 2-column grid */}
       {!loading && filtered.length > 0 && (
         <View className="flex-row flex-wrap gap-3">
-          {filtered.map((session) => {
+          {filtered.map((session, idx) => {
             const svc = getServiceFromSession(session);
             const myBooking = session.bookings?.find((b: any) => b.menteeId === currentUserId);
             const isPending   = myBooking?.status === 'pending';
@@ -97,9 +98,16 @@ const ServicesSection: React.FC<ServicesSectionProps> = ({
 
             return (
               <View
-                key={session.sessionId}
-                className={`w-[47%] bg-[#fbf7f3] border border-[#e0d8cf] rounded-2xl p-4 ${isBooked ? 'opacity-60' : ''}`}
+                key={`svc-session-${session.sessionId || session._id || session.id || idx}-${idx}`}
+                className={`w-[47%] bg-[#fbf7f3] border border-[#e0d8cf] rounded-2xl p-4 ${isBooked ? 'opacity-70' : ''}`}
               >
+                {/* Thumbnail */}
+                {session.thumbnailImage && (
+                  <View className="w-full h-24 rounded-xl overflow-hidden mb-3 border border-[#e0d8cf]">
+                    <Image source={{ uri: session.thumbnailImage }} className="w-full h-full" resizeMode="cover" />
+                  </View>
+                )}
+
                 {/* Type badge */}
                 <View className="flex-row items-center gap-x-1.5 mb-2">
                   <Text className="text-base">{isGroup ? '👥' : '📞'}</Text>
@@ -125,13 +133,15 @@ const ServicesSection: React.FC<ServicesSectionProps> = ({
                 {/* Duration */}
                 <View className="flex-row items-center gap-x-1 mb-3">
                   <Text className="text-[10px]">🕐</Text>
-                  <Text className="text-[11px] text-[#7a5c3e]">{session.duration} Min</Text>
+                  <Text className="text-[11px] text-[#7a5c3e]">
+                    {session.duration || 30} Min
+                  </Text>
                 </View>
 
                 {/* Price + Action */}
                 <View className="flex-row items-center justify-between">
                   <Text className={`font-bold text-sm ${session.pricing?.basePrice === 0 ? 'text-green-600' : 'text-[#4a3728]'}`}>
-                    {session.pricing?.basePrice === 0 ? 'Free' : `₹${session.pricing?.basePrice}`}
+                    {session.pricing?.basePrice === 0 ? 'Free' : `₹${session.pricing?.basePrice ?? session.price ?? 0}`}
                   </Text>
 
                   {isBooked ? (
@@ -144,7 +154,7 @@ const ServicesSection: React.FC<ServicesSectionProps> = ({
                     <TouchableOpacity
                       onPress={() => onServiceClick(svc)}
                       activeOpacity={0.85}
-                      className="bg-[#4a3728] px-3.5 py-1.5 rounded-xl"
+                      className="bg-[#4a3728] px-3.5 py-1.5 rounded-xl shadow-xs"
                     >
                       <Text className="text-white text-xs font-bold">Book</Text>
                     </TouchableOpacity>

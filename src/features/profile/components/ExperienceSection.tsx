@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -28,13 +28,17 @@ interface Experience {
  
 interface ExperienceSectionProps {
   experienceIds?: string[];
+  experienceList?: any[];
+  onDataRefresh?: () => void;
+  isOwnProfile?: boolean;
 }
  
-const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [] }) => {
+const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds, experienceList, onDataRefresh, isOwnProfile = true }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isShowAllModalOpen, setIsShowAllModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -54,29 +58,93 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
   const [achievementInput, setAchievementInput] = useState('');
   const [achievementsList, setAchievementsList] = useState<string[]>([]);
 //  const experienceIds=1
+  const prevIdsRef = useRef<string>('INITIAL');
+  
   useEffect(() => {
+    const formatPeriod = (start: string, end?: string) => {
+      if (!start) return 'Present';
+      const startYear = new Date(start).getFullYear();
+      const endYear = end ? new Date(end).getFullYear() : 'Present';
+      return `${startYear} - ${endYear}`;
+    };
+
+    if (!isOwnProfile) {
+      if (experienceList && experienceList.length > 0) {
+        const transformed: Experience[] = experienceList.map((exp: any) => ({
+          experienceId: exp.experienceId || exp._id || exp.id || String(Math.random()),
+          company: exp.companyName || exp.company || 'Company',
+          position: exp.currentPosition || exp.position || 'Position',
+          period: exp.duration || formatPeriod(exp.startDate, exp.endDate),
+          current: exp.currentlyWorking || exp.current || false,
+          description: exp.description || '',
+          achievements: exp.keyAchievements || exp.achievements || [],
+          logo: exp.logo || 'https://img.icons8.com/color/96/briefcase.png',
+          startDate: exp.startDate || '',
+          endDate: exp.endDate,
+        }));
+        transformed.sort((a, b) => (b.startDate || '9999').localeCompare(a.startDate || '9999'));
+        setExperiences(transformed);
+        if (transformed.length > 0) setCurrentIndex(0);
+      } else {
+        setExperiences([]);
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    if (experienceList && experienceList.length > 0) {
+      const transformed: Experience[] = experienceList.map((exp: any) => ({
+        experienceId: exp.experienceId,
+        company: exp.companyName || exp.company,
+        position: exp.currentPosition || exp.position,
+        period: exp.duration || formatPeriod(exp.startDate, exp.endDate),
+        current: exp.currentlyWorking || exp.current,
+        description: exp.description,
+        achievements: exp.keyAchievements || exp.achievements || [],
+        logo: exp.logo || 'https://img.icons8.com/color/96/briefcase.png',
+        startDate: exp.startDate,
+        endDate: exp.endDate,
+      }));
+      transformed.sort((a, b) => (b.startDate || '9999').localeCompare(a.startDate || '9999'));
+      
+      const newExpStr = JSON.stringify(transformed);
+      if (prevIdsRef.current !== newExpStr) {
+        prevIdsRef.current = newExpStr;
+        setExperiences(transformed);
+        if (transformed.length > 0) setCurrentIndex(0);
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    const currentIdsStr = (experienceIds || []).join(',');
+    if (prevIdsRef.current === currentIdsStr && experiences.length > 0) return;
+    prevIdsRef.current = currentIdsStr;
+
     const fetchExperiences = async () => {
       try {
         setIsLoading(true);
-        const fetchPromises = experienceIds.map((id: string) => AuthService.getExperienceById(id));
-        const responses = await Promise.all(fetchPromises);
- 
-        const transformed: Experience[] = responses.map((response: any) => {
-          const exp = response.data.experience;
-          return {
-            experienceId: exp.experienceId,
-            company: exp.companyName,
-            position: exp.currentPosition,
-            period: exp.duration || formatPeriod(exp.startDate, exp.endDate),
-            current: exp.currentlyWorking,
-            description: exp.description,
-            achievements: exp.keyAchievements || [],
-            logo: 'https://img.icons8.com/color/96/briefcase.png',
-            startDate: exp.startDate,
-            endDate: exp.endDate,
-          };
-        });
- 
+        const fetchPromises = (experienceIds || []).map((id: string) => AuthService.getExperienceById(id));
+        const results = await Promise.allSettled(fetchPromises);
+        
+        const transformed: Experience[] = results
+          .filter((result) => result.status === 'fulfilled' && result.value?.data?.experience)
+          .map((result: any) => {
+            const exp = result.value.data.experience;
+            return {
+              experienceId: exp.experienceId,
+              company: exp.companyName,
+              position: exp.currentPosition,
+              period: exp.duration || formatPeriod(exp.startDate, exp.endDate),
+              current: exp.currentlyWorking,
+              description: exp.description,
+              achievements: exp.keyAchievements || [],
+              logo: 'https://img.icons8.com/color/96/briefcase.png',
+              startDate: exp.startDate,
+              endDate: exp.endDate,
+            };
+          });
+
         transformed.sort((a, b) =>
           (b.startDate || '9999').localeCompare(a.startDate || '9999')
         );
@@ -92,9 +160,10 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
     if (experienceIds && experienceIds.length > 0) {
       fetchExperiences();
     } else {
+      setExperiences([]);
       setIsLoading(false);
     }
-  }, [experienceIds]);
+  }, [experienceIds, experienceList, isOwnProfile]);
 
  
   const formatPeriod = (start: string, end?: string) => {
@@ -114,6 +183,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
     setAchievementInput('');
     setAchievementsList([]);
     setError('');
+    setIsEditing(false);
   };
  
   const addAchievement = () => {
@@ -132,14 +202,17 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
   };
  
   const validateExperience = (): string | null => {
+    if (!company.trim()) return 'Company Name is required';
+    if (!position.trim()) return 'Job Position is required';
+    if (!description.trim()) return 'Description is required';
     if (!startDate) return 'Start date is required';
     const start = new Date(startDate);
-    if (isNaN(start.getTime())) return 'Invalid start date';
+    if (isNaN(start.getTime())) return 'Invalid start date (use YYYY-MM-DD)';
     if (start > new Date()) return 'Start date cannot be in the future';
     if (!isCurrent) {
       if (!endDate) return 'End date is required when not currently working';
       const end = new Date(endDate);
-      if (isNaN(end.getTime())) return 'Invalid end date';
+      if (isNaN(end.getTime())) return 'Invalid end date (use YYYY-MM-DD)';
       if (end < start) return 'End date must be after start date';
     }
     if (achievementsList.length > 10) return 'Maximum 10 achievements allowed';
@@ -207,6 +280,11 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
       resetForm();
       setIsModalOpen(false);
       setIsEditing(false);
+
+      if(onDataRefresh) {
+        onDataRefresh();
+      }
+      
     } catch (err: any) {
       setError(err.message || 'Failed to save experience. Please try again.');
     } finally {
@@ -226,6 +304,11 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
       setExperiences(updated);
       setCurrentIndex(Math.max(0, currentIndex - 1));
       setIsDeleteConfirmOpen(false);
+
+      if(onDataRefresh) {
+        onDataRefresh();
+      }
+      
     } catch (err: any) {
       setError(err.message || 'Failed to delete experience');
     } finally {
@@ -241,6 +324,11 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
       const updated = experiences.filter((_, i) => i !== currentIndex);
       setExperiences(updated);
       setCurrentIndex(Math.max(0, currentIndex - 1));
+      setIsArchiveConfirmOpen(false);
+      
+      if(onDataRefresh) {
+        onDataRefresh();
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to archive experience');
     } finally {
@@ -271,21 +359,25 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
           <Text className="text-4xl mb-3">💼</Text>
           <Text className="text-base font-bold text-[#4a3728] mb-1">No Experience Added</Text>
           <Text className="text-xs text-[#8b6f47] text-center mb-5 leading-4">
-            Showcase your professional journey and achievements
+            {isOwnProfile ? 'Showcase your professional journey and achievements' : 'No professional experience added yet.'}
           </Text>
-          <TouchableOpacity
-            onPress={() => { resetForm(); setIsModalOpen(true); }}
-            activeOpacity={0.85}
-            className="flex-row items-center gap-x-2 px-6 py-3 bg-[#4a3728] rounded-xl shadow-md"
-          >
-            <Text className="text-[#f6ede8] font-semibold text-sm">Add Your First Experience</Text>
-          </TouchableOpacity>
- 
-          <View className="mt-5 px-4 py-3 bg-[#4a3728]/5 rounded-xl border border-[#8b6f47]/20 w-full">
-            <Text className="text-xs text-[#6b5038] text-center">
-              💡 <Text className="font-semibold">Tip:</Text> Include job title, company, dates, and key achievements to stand out.
-            </Text>
-          </View>
+          {isOwnProfile && (
+            <>
+              <TouchableOpacity
+                onPress={() => { resetForm(); setIsModalOpen(true); }}
+                activeOpacity={0.85}
+                className="flex-row items-center gap-x-2 px-6 py-3 bg-[#4a3728] rounded-xl shadow-md"
+              >
+                <Text className="text-[#f6ede8] font-semibold text-sm">Add Your First Experience</Text>
+              </TouchableOpacity>
+     
+              <View className="mt-5 px-4 py-3 bg-[#4a3728]/5 rounded-xl border border-[#8b6f47]/20 w-full">
+                <Text className="text-xs text-[#6b5038] text-center">
+                  💡 <Text className="font-semibold">Tip:</Text> Include job title, company, dates, and key achievements to stand out.
+                </Text>
+              </View>
+            </>
+          )}
         </View>
  
         <ExperienceModal
@@ -320,7 +412,8 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
   }
  
   // ─── MAIN VIEW ───────────────────────────────────────────────────
-  const currentExp = experiences[currentIndex];
+  const safeIndex = Math.min(currentIndex, Math.max(0, experiences.length - 1));
+  const currentExp = experiences[safeIndex];
  
   return (
     <View className="bg-[#f6ede8]/80 rounded-2xl p-4 shadow-md border border-[#e0d8cf]/50 mb-6">
@@ -335,62 +428,62 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
         </View>
  
         {/* Action Buttons */}
-        <View className="flex-row gap-x-2">
-          {/* Add */}
-          <TouchableOpacity
-            onPress={() => { resetForm(); setIsModalOpen(true); }}
-            activeOpacity={0.8}
-            className="p-2 rounded-xl bg-[#4a3728]"
-          >
-            <Plus size={16} color="#f6ede8" />
-          </TouchableOpacity>
- 
-          {/* Edit */}
-          <TouchableOpacity
-            onPress={() => {
-              setIsEditing(true);
-              setIsModalOpen(true);
-              setCompany(currentExp.company);
-              setPosition(currentExp.position);
-              setDescription(currentExp.description);
-              setStartDate(currentExp.startDate.split('T')[0]);
-              setEndDate(currentExp.current ? '' : (currentExp.endDate?.split('T')[0] || ''));
-              setIsCurrent(currentExp.current);
-              setLogoUrl(currentExp.logo);
-              setAchievementsList(currentExp.achievements);
-            }}
-            activeOpacity={0.8}
-            className="p-2 rounded-xl bg-[#4a3728]"
-          >
-            <Pencil size={16} color="#f6ede8" />
-          </TouchableOpacity>
- 
-          {/* Delete */}
-          <TouchableOpacity
-            onPress={handleDeleteExperience}
-            disabled={isDeleting}
-            activeOpacity={0.8}
-            className={`p-2 rounded-xl bg-[#4a3728] ${isDeleting ? 'opacity-50' : ''}`}
-          >
-            {isDeleting
-              ? <ActivityIndicator size="small" color="#f6ede8" />
-              : <Minus size={16} color="#f6ede8" />
-            }
-          </TouchableOpacity>
- 
-          {/* Archive */}
-          <TouchableOpacity
-            onPress={handleArchiveExperience}
-            disabled={isArchiving}
-            activeOpacity={0.8}
-            className={`p-2 rounded-xl bg-[#4a3728] ${isArchiving ? 'opacity-50' : ''}`}
-          >
-            {isArchiving
-              ? <ActivityIndicator size="small" color="#f6ede8" />
-              : <Archive size={16} color="#f6ede8" />
-            }
-          </TouchableOpacity>
-        </View>
+        {isOwnProfile && (
+          <View className="flex-row gap-x-2">
+            {/* Add */}
+            <TouchableOpacity
+              onPress={() => { resetForm(); setIsModalOpen(true); }}
+              activeOpacity={0.8}
+              className="p-2 rounded-xl bg-[#4a3728]"
+            >
+              <Plus size={16} color="#f6ede8" />
+            </TouchableOpacity>
+   
+            {/* Edit */}
+            <TouchableOpacity
+              onPress={() => {
+                setIsEditing(true);
+                setIsModalOpen(true);
+                setCompany(currentExp.company);
+                setPosition(currentExp.position);
+                setDescription(currentExp.description);
+                setStartDate((currentExp.startDate || '').split('T')[0]);
+                setEndDate(currentExp.current ? '' : ((currentExp.endDate || '').split('T')[0] || ''));
+                setIsCurrent(currentExp.current);
+                setLogoUrl(currentExp.logo);
+                setAchievementsList(currentExp.achievements);
+              }}
+              activeOpacity={0.8}
+              className="p-2 rounded-xl bg-[#4a3728]"
+            >
+              <Pencil size={16} color="#f6ede8" />
+            </TouchableOpacity>
+   
+            {/* Delete */}
+            <TouchableOpacity
+              onPress={isDeleting ? undefined : handleDeleteExperience}
+              activeOpacity={0.8}
+              className={`p-2 rounded-xl bg-[#4a3728] ${isDeleting ? 'opacity-50' : ''}`}
+            >
+              {isDeleting
+                ? <ActivityIndicator size="small" color="#f6ede8" />
+                : <Minus size={16} color="#f6ede8" />
+              }
+            </TouchableOpacity>
+   
+            {/* Archive */}
+            <TouchableOpacity
+              onPress={isArchiving ? undefined : () => setIsArchiveConfirmOpen(true)}
+              activeOpacity={0.8}
+              className={`p-2 rounded-xl bg-[#4a3728] ${isArchiving ? 'opacity-50' : ''}`}
+            >
+              {isArchiving
+                ? <ActivityIndicator size="small" color="#f6ede8" />
+                : <Archive size={16} color="#f6ede8" />
+              }
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
  
       {/* Timeline + Details */}
@@ -419,7 +512,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
                         : 'bg-white border-[#d4c4b5]'
                     }`}
                   >
-                    <Image source={{ uri: exp.logo }} className="w-7 h-7" resizeMode="contain" />
+                    
                   </View>
  
                   {/* Text */}
@@ -430,7 +523,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
                       }`}
                       numberOfLines={1}
                     >
-                      {exp.company.split(' (')[0]}
+                      {(exp.company  || '').split(' (')[0]}
                     </Text>
                     <Text
                       className={`text-xs mt-0.5 ${
@@ -499,7 +592,7 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
           </View>
  
           {/* Achievements */}
-          {currentExp.achievements.length > 0 && (
+          {Array.isArray(currentExp.achievements) && currentExp.achievements.length > 0 && (
             <View className="bg-[#e0d8cf]/70 rounded-xl p-3 border border-[#d4c4b5]">
               <Text className="text-[10px] font-bold text-[#4a3728] uppercase mb-2">
                 Key Achievements
@@ -596,16 +689,14 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
             {/* Footer */}
             <View className="flex-row gap-x-3 px-5 py-4 border-t border-[#e0d8cf] bg-[#f0e6d8]">
               <TouchableOpacity
-                onPress={() => setIsDeleteConfirmOpen(false)}
-                disabled={isDeleting}
+                onPress={isDeleting ? undefined : () => setIsDeleteConfirmOpen(false)}
                 activeOpacity={0.8}
                 className="flex-1 py-3 bg-[#e0d8cf] rounded-xl items-center"
               >
                 <Text className="text-[#4a3728] font-semibold text-sm">Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={confirmDeleteExperience}
-                disabled={isDeleting}
+                onPress={isDeleting ? undefined : confirmDeleteExperience}
                 activeOpacity={0.8}
                 className={`flex-1 py-3 bg-red-600 rounded-xl flex-row items-center justify-center gap-x-2 ${
                   isDeleting ? 'opacity-60' : ''
@@ -618,6 +709,66 @@ const ExperienceSection: React.FC<ExperienceSectionProps> = ({ experienceIds = [
                   </>
                 ) : (
                   <Text className="text-white font-semibold text-sm">Yes, Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Archive Confirmation Modal */}
+      <Modal visible={isArchiveConfirmOpen} transparent animationType="fade" onRequestClose={() => setIsArchiveConfirmOpen(false)}>
+        <Pressable
+          className="flex-1 bg-black/50 justify-center items-center px-4"
+          onPress={() => setIsArchiveConfirmOpen(false)}
+        >
+          <Pressable
+            className="w-full bg-[#f6ede8] rounded-2xl overflow-hidden border border-[#e0d8cf]"
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <View className="flex-row items-center gap-x-2 px-5 py-4 border-b border-[#e0d8cf]">
+              <Text className="text-xl">📦</Text>
+              <Text className="text-lg font-bold text-[#4a3728]">Archive Experience?</Text>
+            </View>
+ 
+            {/* Body */}
+            <View className="px-5 py-5">
+              <Text className="text-sm text-[#4a3728] leading-5">
+                Are you sure you want to archive your{' '}
+                <Text className="font-bold">"{currentExp?.company}"</Text> experience? It will be hidden from your public profile but you can restore it later.
+              </Text>
+              {!!error && (
+                <View className="mt-3 bg-red-50 border border-red-200 rounded-xl px-3 py-2 flex-row items-start gap-x-2">
+                  <Text className="text-red-600 font-bold">⚠</Text>
+                  <Text className="text-red-700 text-xs flex-1">{error}</Text>
+                </View>
+              )}
+            </View>
+ 
+            {/* Footer */}
+            <View className="flex-row gap-x-3 px-5 py-4 border-t border-[#e0d8cf] bg-[#f0e6d8]">
+              <TouchableOpacity
+                onPress={isArchiving ? undefined : () => setIsArchiveConfirmOpen(false)}
+                activeOpacity={0.8}
+                className="flex-1 py-3 bg-[#e0d8cf] rounded-xl items-center"
+              >
+                <Text className="text-[#4a3728] font-semibold text-sm">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={isArchiving ? undefined : handleArchiveExperience}
+                activeOpacity={0.8}
+                className={`flex-1 py-3 bg-[#4a3728] rounded-xl flex-row items-center justify-center gap-x-2 ${
+                  isArchiving ? 'opacity-60' : '' 
+                }`}
+              >
+                {isArchiving ? (
+                  <>
+                    <ActivityIndicator size="small" color="#ffffff" />
+                    <Text className="text-white font-semibold text-sm">Archiving...</Text>
+                  </>
+                ) : (
+                  <Text className="text-white font-semibold text-sm">Yes, Archive</Text>
                 )}
               </TouchableOpacity>
             </View>

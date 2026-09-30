@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,19 @@ import {
   Modal,
   ScrollView,
   Pressable,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { X, ChevronDown } from 'lucide-react-native';
- 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import AuthService from '../../../../services/auth.service';
+
 interface OpenToModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+const STORAGE_KEY = 'user_open_to_preferences';
  
 interface MainFeature {
   id: string;
@@ -89,6 +95,24 @@ const OpenToModal: React.FC<OpenToModalProps> = ({ isOpen, onClose }) => {
     job: true,
   });
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadSavedPreferences();
+    }
+  }, [isOpen]);
+
+  const loadSavedPreferences = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        setCheckedItems(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.log('Failed to load open to preferences:', e);
+    }
+  };
  
   const toggleSection = (id: string) => {
     setExpandedSections((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -96,6 +120,26 @@ const OpenToModal: React.FC<OpenToModalProps> = ({ isOpen, onClose }) => {
  
   const toggleCheck = (key: string) => {
     setCheckedItems((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleApply = async () => {
+    setIsSaving(true);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(checkedItems));
+      try {
+        await AuthService.updateUserProfile({
+          preferences: { openTo: checkedItems },
+        });
+      } catch (backendError) {
+        console.log('Backend preferences sync note:', backendError);
+      }
+      Alert.alert('Preferences Saved', 'Your "Open To" opportunities have been updated.');
+      onClose();
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to save preferences. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
  
   return (
@@ -207,11 +251,16 @@ const OpenToModal: React.FC<OpenToModalProps> = ({ isOpen, onClose }) => {
               <Text className="text-[#4a3728] font-semibold text-sm">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={onClose}
+              onPress={handleApply}
+              disabled={isSaving}
               activeOpacity={0.8}
-              className="flex-1 py-3 rounded-full bg-[#4a3728] items-center justify-center"
+              className="flex-1 py-3 rounded-full bg-[#4a3728] items-center justify-center flex-row gap-2"
             >
-              <Text className="text-white font-semibold text-sm">Apply Changes</Text>
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text className="text-white font-semibold text-sm">Apply Changes</Text>
+              )}
             </TouchableOpacity>
           </View>
         </Pressable>

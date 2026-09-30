@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import * as React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,9 +9,9 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
+// @ts-ignore
 import { MoreVertical, Pin, Archive, Trash2, Edit, Zap } from 'lucide-react-native';
-// import { useSkillsData } from '@/hooks/data/useSkillsData';
-// import AuthService from './..//..//..//services/auth.service';
+import AuthService from '../../../services/auth.service';
 import DeleteSkillConfirmModal from './modals/DeleteskillconfirmModal';
 import PinLimitModal from './modals/PinLimitModal';
 import Svg, { Path } from 'react-native-svg';
@@ -31,43 +32,43 @@ const PlusIcon = () => (
 
 
 
-const useSkillsData = () => {
-  const [skillsList, setSkillsList] = useState<Skill[]>([]);
-  const [isLoadingSkills, setIsLoadingSkills] = useState(false);
+// const useSkillsData = () => {
+//   const [skillsList, setSkillsList] = useState<Skill[]>([]);
+//   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
  
-  const fetchSkillsData = async () => {
-    // TODO: replace with real API call via AuthService
-    setIsLoadingSkills(false);
-  };
+//   const fetchSkillsData = async () => {
+//     // TODO: replace with real API call via AuthService
+//     setIsLoadingSkills(false);
+//   };
  
-  const updateSkillInList = (skillId: string, updatedData: Partial<Skill>) => {
-    setSkillsList((prev) =>
-      prev.map((s) => (s.skillId === skillId ? { ...s, ...updatedData } : s))
-    );
-  };
+//   const updateSkillInList = (skillId: string, updatedData: Partial<Skill>) => {
+//     setSkillsList((prev) =>
+//       prev.map((s) => (s.skillId === skillId ? { ...s, ...updatedData } : s))
+//     );
+//   };
  
-  const getPinnedCount = () => skillsList.filter((s) => s.isPinned).length;
+//   const getPinnedCount = () => skillsList.filter((s) => s.isPinned).length;
  
-  const updatePinStatus = (skillId: string, isPinned: boolean) => {
-    setSkillsList((prev) =>
-      prev.map((s) => (s.skillId === skillId ? { ...s, isPinned } : s))
-    );
-  };
+//   const updatePinStatus = (skillId: string, isPinned: boolean) => {
+//     setSkillsList((prev) =>
+//       prev.map((s) => (s.skillId === skillId ? { ...s, isPinned } : s))
+//     );
+//   };
  
-  const removeSkillFromList = (skillId: string) => {
-    setSkillsList((prev) => prev.filter((s) => s.skillId !== skillId));
-  };
+//   const removeSkillFromList = (skillId: string) => {
+//     setSkillsList((prev) => prev.filter((s) => s.skillId !== skillId));
+//   };
  
-  return {
-    skillsList,
-    isLoadingSkills,
-    fetchSkillsData,
-    updateSkillInList,
-    getPinnedCount,
-    updatePinStatus,
-    removeSkillFromList,
-  };
-};
+//   return {
+//     skillsList,
+//     isLoadingSkills,
+//     fetchSkillsData,
+//     updateSkillInList,
+//     getPinnedCount,
+//     updatePinStatus,
+//     removeSkillFromList,
+//   };
+// };
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Skill {
   skillId: string;
@@ -114,6 +115,7 @@ interface SkillCardProps {
   onPin: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  isOwnProfile?: boolean;
 }
 
 const SkillCard: React.FC<SkillCardProps> = ({
@@ -126,6 +128,7 @@ const SkillCard: React.FC<SkillCardProps> = ({
   onPin,
   onArchive,
   onDelete,
+  isOwnProfile = true,
 }) => {
   const strengthPct = getStrengthPercentage(skill.skillStrength);
   const strengthDots = getStrengthLevel(skill.skillStrength);
@@ -161,16 +164,18 @@ const SkillCard: React.FC<SkillCardProps> = ({
               </Text>
 
               {/* Three-dot Menu */}
-              <View className="relative">
-                <TouchableOpacity
-                  onPress={onMenuToggle}
-                  activeOpacity={0.7}
-                  className="p-1.5 rounded-lg"
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MoreVertical size={18} color="#4a3728" />
-                </TouchableOpacity>
-              </View>
+              {isOwnProfile && (
+                <View className="relative">
+                  <TouchableOpacity
+                    onPress={onMenuToggle}
+                    activeOpacity={0.7}
+                    className="p-1.5 rounded-lg"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MoreVertical size={18} color="#4a3728" />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* Category */}
@@ -269,7 +274,15 @@ const SkillCard: React.FC<SkillCardProps> = ({
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-const SkillsSection: React.FC = () => {
+interface SkillsSectionProps {
+  skillsList?: Skill[];
+  onDataRefresh?: () => void;
+  isOwnProfile?: boolean;
+}
+
+const SkillsSection: React.FC<SkillsSectionProps> = ({ skillsList: initialSkills, onDataRefresh, isOwnProfile = true }) => {
+  const [skillsList, setSkillsList] = useState<Skill[]>(initialSkills || []);
+  const [isLoadingSkills, setIsLoadingSkills] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isAddSkillModalOpen, setIsAddSkillModalOpen] = useState(false);
   const [isUpdateSkillModalOpen, setIsUpdateSkillModalOpen] = useState(false);
@@ -282,26 +295,60 @@ const SkillsSection: React.FC = () => {
   const [isDeleteConfirmModalOpen, setIsDeleteConfirmModalOpen] = useState(false);
   const [skillToDelete, setSkillToDelete] = useState<Skill | null>(null);
 
-  const {
-    skillsList,
-    isLoadingSkills,
-    fetchSkillsData,
-    updateSkillInList,
-    getPinnedCount,
-    updatePinStatus,
-    removeSkillFromList,
-  } = useSkillsData();
+  const getPinnedCount = () => skillsList.filter((s) => s.isPinned).length;
+
+  const loadSkills = async () => {
+    try {
+      setIsLoadingSkills(true);
+      const res = await AuthService.getAllSkills();
+      const fetchedList = res?.data?.skillsList || res?.data?.skills || res?.skillsList || res?.skills || [];
+      if (Array.isArray(fetchedList)) {
+        // Sort pinned skills first, then by creation date or strength
+        const sortedList = [...fetchedList].sort((a, b) => {
+          if (a.isPinned === b.isPinned) return 0;
+          return a.isPinned ? -1 : 1;
+        });
+        setSkillsList(sortedList);
+      }
+    } catch (error) {
+      console.error("❌ failed to load skills:", error);
+    } finally {
+      setIsLoadingSkills(false);
+    }
+  }
+
+  const hasFetchedRef = useRef(false);
 
   useEffect(() => {
-    fetchSkillsData();
-  }, [fetchSkillsData]);
+    // For other users' profiles, data must strictly come via props
+    if (!isOwnProfile) {
+      if (initialSkills && initialSkills.length > 0) {
+        setSkillsList(initialSkills);
+      } else {
+        setSkillsList([]);
+      }
+      return;
+    }
+
+    if (initialSkills && initialSkills.length > 0) {
+      setSkillsList(prev => JSON.stringify(prev) === JSON.stringify(initialSkills) ? prev : initialSkills);
+      hasFetchedRef.current = true;
+      return;
+    }
+
+    if (!hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      loadSkills();
+    }
+  }, [initialSkills, isOwnProfile]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleAddSkill = async (skillData: any) => {
     try {
-    //   const response = await AuthService.createSkill(skillData);
-    //   if (response?.data?.skill) await fetchSkillsData();
-    await fetchSkillsData();
+      await AuthService.createSkill(skillData);
+      await loadSkills();
+      onDataRefresh?.();
+      setIsAddSkillModalOpen(false);
     } catch (error: any) {
       console.error('❌ Failed to add skill:', error);
     }
@@ -316,7 +363,6 @@ const SkillsSection: React.FC = () => {
     if (skill) {
       setSelectedSkillForUpdate(skill);
       setIsUpdateSkillModalOpen(true);
-      // TODO: AddSkillModal / UpdateSkillModal will be placed here when ready
     }
     setOpenMenuId(null);
   };
@@ -331,18 +377,13 @@ const SkillsSection: React.FC = () => {
     setOpenMenuId(null);
     try {
       if (isPinned) {
-        // const res = await AuthService.unpinSkill(skillId);
-        // if (res?.data?.skill) updatePinStatus(skillId, false);
-        updatePinStatus(skillId,false);
+        await AuthService.unpinSkill(skillId);
       } else {
-        // const res = await AuthService.pinSkill(skillId, getPinnedCount() + 1);
-        // if (res?.data?.skill) updatePinStatus(skillId, true);
-        updatePinStatus(skillId,true);
+        await AuthService.pinSkill(skillId, getPinnedCount() + 1);
       }
-      setTimeout(async () => {
-        await fetchSkillsData();
-        setIsPinningSkillId(null);
-      }, 300);
+      await loadSkills();
+      onDataRefresh?.();
+      setIsPinningSkillId(null);
     } catch (error: any) {
       console.error('❌ Failed to pin/unpin skill:', error);
       setIsPinningSkillId(null);
@@ -353,10 +394,9 @@ const SkillsSection: React.FC = () => {
     setIsArchivingSkillId(skillId);
     setOpenMenuId(null);
     try {
-    //   const res = await AuthService.archiveSkill(skillId);
-    //   if (res?.data?.skill) removeSkillFromList(skillId);
-            removeSkillFromList(skillId);
-
+      await AuthService.archiveSkill(skillId);
+      await loadSkills();
+      onDataRefresh?.();
       setIsArchivingSkillId(null);
     } catch (error: any) {
       console.error('❌ Failed to archive skill:', error);
@@ -374,8 +414,9 @@ const SkillsSection: React.FC = () => {
     if (!skillToDelete) return;
     setIsDeletingSkillId(skillToDelete.skillId);
     try {
-    //   await AuthService.deleteSkill(skillToDelete.skillId);
-      removeSkillFromList(skillToDelete.skillId);
+      await AuthService.deleteSkill(skillToDelete.skillId);
+      await loadSkills();
+      onDataRefresh?.();
       setIsDeleteConfirmModalOpen(false);
       setSkillToDelete(null);
       setIsDeletingSkillId(null);
@@ -387,12 +428,11 @@ const SkillsSection: React.FC = () => {
 
   const handleUpdateSkillConfirm = async (skillId: string, updatedData: any) => {
     try {
-    //   const res = await AuthService.updateSkill(skillId, updatedData);
-    //   if (res?.data?.skill) {
-    //     updateSkillInList(skillId, updatedData);
-    //     await fetchSkillsData();
-    updateSkillInList(skillId,updatedData);
-      await fetchSkillsData();
+      await AuthService.updateSkill(skillId, updatedData);
+      await loadSkills();
+      onDataRefresh?.();
+      setIsUpdateSkillModalOpen(false);
+      setSelectedSkillForUpdate(undefined);
     } catch (error: any) {
       console.error('❌ Failed to update skill:', error);
     }
@@ -421,17 +461,19 @@ const SkillsSection: React.FC = () => {
               <Text className="text-xs text-[#8b6f47]">Professional Expertise</Text>
             </View>
           </View>
-          <TouchableOpacity 
-            onPress={() => {
-              setIsAddSkillModalOpen(true);
-              // TODO: AddSkillModal will open here
-            }}
-            activeOpacity={0.85}
-            className='flex-row items-center gap-1.5 bg-brand-dark px-3 py-2 rounded-xl'
-          >
-            <PlusIcon/>
-            <Text className="text-[#4a3728] text-xs font-bold">Add Skill</Text>
-          </TouchableOpacity>
+          {isOwnProfile && (
+            <TouchableOpacity 
+              onPress={() => {
+                setIsAddSkillModalOpen(true);
+                // TODO: AddSkillModal will open here
+              }}
+              activeOpacity={0.85}
+              className='flex-row items-center gap-1.5 bg-brand-dark px-3 py-2 rounded-xl'
+            >
+              <PlusIcon/>
+              <Text className="text-[#4a3728] text-xs font-bold">Add Skill</Text>
+            </TouchableOpacity>
+          )}
         </View>
  
         <View className="items-center py-10 bg-white/30 rounded-2xl border-2 border-dashed border-[#d4c4b5]">
@@ -474,19 +516,21 @@ const SkillsSection: React.FC = () => {
               <Text className="text-xs font-bold text-[#4a3728]">{skillsList.length} Total</Text>
             </View>
             {/* Add button */}
-            <TouchableOpacity
-              onPress={() => setIsAddSkillModalOpen(true)}
-              activeOpacity={0.85}
-              className="px-4 py-2 bg-[#4a3728] rounded-full"
-            >
-              <Text className="text-[#f6ede8] text-xs font-bold">Add Skill</Text>
-            </TouchableOpacity>
+            {isOwnProfile && (
+              <TouchableOpacity
+                onPress={() => setIsAddSkillModalOpen(true)}
+                activeOpacity={0.85}
+                className="px-4 py-2 bg-[#4a3728] rounded-full"
+              >
+                <Text className="text-[#f6ede8] text-xs font-bold">Add Skill</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
  
         {/* Skills List */}
         <View>
-          {skillsList.map((skill) => {
+          {skillsList.slice(0, 3).map((skill) => {
             const isActionLoading =
               isPinningSkillId === skill.skillId ||
               isArchivingSkillId === skill.skillId ||
@@ -504,13 +548,14 @@ const SkillsSection: React.FC = () => {
                 onPin={() => handlePinSkill(skill.skillId, skill.isPinned)}
                 onArchive={() => handleArchiveSkill(skill.skillId)}
                 onDelete={() => handleDeleteSkill(skill.skillId)}
+                isOwnProfile={isOwnProfile}
               />
             );
           })}
         </View>
  
         {/* Show All Button */}
-        {skillsList.length > 2 && (
+        {skillsList.length > 3 && (
           <View className="items-center mt-2">
             <TouchableOpacity
               onPress={() => setIsViewAllSkillsModalOpen(true)}
@@ -548,6 +593,11 @@ const SkillsSection: React.FC = () => {
         isOpen={isViewAllSkillsModalOpen}
         onClose={() => setIsViewAllSkillsModalOpen(false)}
         skills={skillsList}
+        onUpdate={(id: string) => { setIsViewAllSkillsModalOpen(false); handleUpdateSkill(id); }}
+        onPin={(id: string, isPinned: boolean) => handlePinSkill(id, isPinned)}
+        onArchive={(id: string) => handleArchiveSkill(id)}
+        onDelete={(id: string) => { setIsViewAllSkillsModalOpen(false); handleDeleteSkill(id); }}
+        loadingActionId={isPinningSkillId || isArchivingSkillId || isDeletingSkillId}
       />
  
       <PinLimitModal

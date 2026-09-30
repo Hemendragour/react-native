@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity } from 'react-native';
 import { ChevronDown } from 'lucide-react-native';
 import PickerSheet from './PickerSheet';
+import DatePickerField from '../../../components/common/DatePickerField';
 
 interface Props {
   onNext: (data: any) => void;
@@ -10,9 +11,17 @@ interface Props {
 
 // ─── Options ──────────────────────────────────────────────────────────────────
 const JOB_TITLES = [
-  'Software Engineer', 'Product Manager', 'Data Scientist', 'UX/UI Designer',
-  'DevOps Engineer', 'Full Stack Developer', 'Frontend Developer',
-  'Backend Developer', 'Mobile Developer', 'QA Engineer', 'Other',
+  { label: 'Software Engineer', value: 'software-engineer' },
+  { label: 'Product Manager', value: 'product-manager' },
+  { label: 'Data Scientist', value: 'data-scientist' },
+  { label: 'UX/UI Designer', value: 'ui-ux-designer' },
+  { label: 'DevOps Engineer', value: 'devops-engineer' },
+  { label: 'Full Stack Developer', value: 'fullstack-developer' },
+  { label: 'Frontend Developer', value: 'frontend-developer' },
+  { label: 'Backend Developer', value: 'backend-developer' },
+  { label: 'Mobile Developer', value: 'mobile-developer' },
+  { label: 'QA Engineer', value: 'qa-engineer' },
+  { label: 'Other', value: 'other' },
 ];
 
 const COMPANIES = [
@@ -98,7 +107,7 @@ const WorkingJobDetails: React.FC<Props> = ({ onNext, onBack }) => {
             }`}
           >
             <Text className={`text-sm ${jobTitle ? 'text-black' : 'text-gray-400'}`}>
-              {jobTitle || 'Select Job Title'}
+              {JOB_TITLES.find(j => j.value === jobTitle)?.label || 'Select Job Title'}
             </Text>
             <ChevronDown size={16} color="#4a3728" />
           </TouchableOpacity>
@@ -156,36 +165,28 @@ const WorkingJobDetails: React.FC<Props> = ({ onNext, onBack }) => {
         </View>
 
         {/* Dates Row */}
-        <View className="flex-row gap-x-3">
+        <View className="flex-row gap-x-3 mb-1">
           <View className="flex-1">
-            <FieldLabel text="Start Date *" />
-            <TextInput
+            <DatePickerField
+              label="Start Date"
+              required
+              placeholder="Select date"
               value={startDate}
-              onChangeText={setStartDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#9ca3af"
-              className={`px-4 py-4 rounded-2xl border bg-white text-black text-sm ${
-                errors.startDate ? 'border-red-400' : 'border-[#4a3728]/40'
-              }`}
+              onChange={setStartDate}
+              error={errors.startDate}
+              maximumDate={new Date()}
             />
-            <FieldError message={errors.startDate} />
           </View>
           <View className="flex-1">
-            <FieldLabel text={`End Date${!isCurrentlyWorking ? ' *' : ''}`} />
-            <TextInput
-              value={endDate}
-              onChangeText={setEndDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#9ca3af"
-              editable={!isCurrentlyWorking}
-              className={`px-4 py-4 rounded-2xl border bg-white text-black text-sm ${
-                errors.endDate ? 'border-red-400' : 'border-[#4a3728]/40'
-              } ${isCurrentlyWorking ? 'opacity-40' : ''}`}
+            <DatePickerField
+              label={`End Date${!isCurrentlyWorking ? ' *' : ''}`}
+              placeholder={isCurrentlyWorking ? 'Present' : 'Select date'}
+              value={isCurrentlyWorking ? '' : endDate}
+              onChange={setEndDate}
+              disabled={isCurrentlyWorking}
+              disabledMessage="Disabled (currently working)"
+              error={!isCurrentlyWorking ? errors.endDate : undefined}
             />
-            {!isCurrentlyWorking
-              ? <FieldError message={errors.endDate} />
-              : <Text className="text-gray-400 text-xs mt-1">Disabled (currently working)</Text>
-            }
           </View>
         </View>
 
@@ -210,7 +211,7 @@ const WorkingJobDetails: React.FC<Props> = ({ onNext, onBack }) => {
       <PickerSheet
         visible={showJobPicker}
         title="Select Job Title"
-        options={JOB_TITLES.map((j) => ({ label: j, value: j }))}
+        options={JOB_TITLES}
         selected={jobTitle}
         onSelect={setJobTitle}
         onClose={() => setShowJobPicker(false)}

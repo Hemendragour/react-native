@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,8 +24,11 @@ import WorkingJobDetails from '../../components/WorkingJobDetails';
 import StudentEducation from '../../components/StudentEducation';
 import FresherEducationRole from '../../components/FresherEducationRole';
 import Skills from '../../components/Skills';
+import SocialButtons from '../../components/SocialButtons';
 import { AuthStackParamList, AppStackParamlist } from '../../types/Types'; // adjust path
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import AuthService from '../../../../services/auth.service';
+import { useAuth } from '../../../../store/hooks/useAuth';
 
 // ── TODO: Uncomment when Redux store is ready ─────────────────────────────────
 // import { useRegister } from '@/store/hooks/useRegister';
@@ -54,27 +58,51 @@ interface RegistrationData {
 }
 
 
-type SignupScreenNavigationProp = NativeStackScreenProps<AuthStackParamList, 'Signup'> & {
-  setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
-};
+// old code: SignupScreen accepted setIsLoggedIn prop
+// type SignupScreenNavigationProp = NativeStackScreenProps<AuthStackParamList, 'Signup'> & {
+//   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
+// };
+// const SignupScreen: React.FC<SignupScreenNavigationProp> = ({ navigation, setIsLoggedIn }) => {
 
-const SignupScreen: React.FC<SignupScreenNavigationProp> = ({ navigation, setIsLoggedIn }) => {
+// ✅ new code: no setIsLoggedIn prop — Redux handles it
+type SignupScreenNavigationProp = NativeStackScreenProps<AuthStackParamList, 'Signup'>;
 
-  // ── TODO: Replace with Redux hook when ready ──────────────────────────────
-  // const { loading, error, currentStep, formData, register, goNext, goBack, saveFormData, clearErrors } = useRegister();
+const SignupScreen = ({ navigation, route }: SignupScreenNavigationProp) => {
+
+  const isGoogleOnboarding = route.params?.isGoogleOnboarding || false;
+  const googleIdToken = route.params?.idToken || '';
+  const initialGoogleData = route.params?.initialData || {};
+
+  // ✅ Redux auth hook
+  const { register: reduxRegister, setLoggedIn } = useAuth();
 
   // ── Local state (mirrors Redux shape) ────────────────────────────────────
-  const [currentStep, setCurrentStep] = useState(1);
-  const [formData, setFormData] = useState<Partial<RegistrationData>>({});
+  const [currentStep, setCurrentStep] = useState(isGoogleOnboarding ? 2 : 1);
+  const [formData, setFormData] = useState<Partial<RegistrationData>>(initialGoogleData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (route.params?.isGoogleOnboarding) {
+      setCurrentStep(2);
+      if (route.params.initialData) {
+        setFormData((prev) => ({ ...prev, ...route.params?.initialData }));
+      }
+    }
+  }, [route.params?.isGoogleOnboarding, route.params?.idToken]);
 
   const saveFormData = (stepData: any) => {
     setFormData((prev) => ({ ...prev, ...stepData }));
   };
 
   const goNext = () => setCurrentStep((prev) => prev + 1);
-  const goBack = () => setCurrentStep((prev) => prev - 1);
+  const goBack = () => {
+    if (currentStep === 2 && isGoogleOnboarding) {
+      navigation.goBack();
+    } else {
+      setCurrentStep((prev) => prev - 1);
+    }
+  };
   const clearErrors = () => setError(null);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -121,21 +149,44 @@ const SignupScreen: React.FC<SignupScreenNavigationProp> = ({ navigation, setIsL
         }),
       };
 
-      // TODO: Replace with Redux register thunk:
-      // await register(cleanData);
+      console.log('Sending to API:', JSON.stringify(cleanData, null, 2));
 
-      // Stub: simulate API
-      await new Promise((res) => setTimeout(res, 1500));
-      console.log('✅ Registration payload:', cleanData);
+      if (isGoogleOnboarding) {
+        console.log('🔐 Performing Google Registration...');
+        const response = await AuthService.googleNativeRegister({
+          idToken: googleIdToken,
+          ...cleanData,
+        });
+        console.log('✅ Google registration successful:', response);
+        setLoggedIn(true);
+      } else {
+        const result = await reduxRegister(cleanData);
+        console.log('Register successful via Redux:', result);
+      }
 
-      await new Promise((res) => setTimeout(res, 100));
-      setIsLoggedIn(true);
     } catch (err: any) {
-      console.error('❌ Registration Error:', err);
+
+      console.error('Registration Error:', err);
       setError(err?.message || 'Registration failed. Please try again.');
     } finally {
+
       setLoading(false);
     }
+    // TODO: Replace with Redux register thunk:
+    // await register(cleanData);
+
+    // Stub: simulate API
+    //   await new Promise((res) => setTimeout(res, 1500));
+    //   console.log('✅ Registration payload:', cleanData);
+
+    //   await new Promise((res) => setTimeout(res, 100));
+    //   setIsLoggedIn(true);
+    // } catch (err: any) {
+    //   console.error('❌ Registration Error:', err);
+    //   setError(err?.message || 'Registration failed. Please try again.');
+    // } finally {
+    //   setLoading(false);
+    // }
   };
 
   // ── Step Renderer ─────────────────────────────────────────────────────────
@@ -144,19 +195,19 @@ const SignupScreen: React.FC<SignupScreenNavigationProp> = ({ navigation, setIsL
       case 1:
         return <CreateAccount onNext={handleNext} />;
       case 2:
-        return <PersonalDetails onNext={handleNext} onBack={goBack} />;
+        return <PersonalDetails onNext={handleNext} onBack={goBack} initialValues={formData} />;
       case 3:
         return <CurrentStatus onNext={handleNext} onBack={goBack} />;
       case 4:
         return (
           <>
-            {formData.status === 'working' && (
+            {formData.userType === 'working' && (
               <WorkingJobDetails onNext={handleNext} onBack={goBack} />
             )}
-            {formData.status === 'student' && (
+            {formData.userType === 'student' && (
               <StudentEducation onNext={handleNext} onBack={goBack} />
             )}
-            {formData.status === 'fresher' && (
+            {formData.userType === 'fresher' && (
               <FresherEducationRole onNext={handleNext} onBack={goBack} />
             )}
           </>
@@ -165,7 +216,7 @@ const SignupScreen: React.FC<SignupScreenNavigationProp> = ({ navigation, setIsL
         return (
           <Skills
             onBack={goBack}
-            onNext={async (skillsData) => {
+            onNext={async (skillsData: any) => {
               const finalData = {
                 ...formData,
                 skills: skillsData.skills || [],
@@ -184,22 +235,22 @@ const SignupScreen: React.FC<SignupScreenNavigationProp> = ({ navigation, setIsL
       <StatusBar barStyle="light-content" backgroundColor="#4a3728" />
 
       {/* ── Decorative top diagonal cover ── */}
-            <View className="absolute top-0 left-0 right-0 h-1/2 overflow-hidden">
-              <View
-                className="absolute bg-[#4a3728]"
-                style={{
-                  width: Dimensions.get('window').width * 2,
-                  height: Dimensions.get('window').height * 0.75,
-                  top: -Dimensions.get('window').height * 0.4,
-                  left: -Dimensions.get('window').width * 0.5,
-                  transform: [{ rotate: '-18deg' }],
-                }}
-              />
-      
-              {/* THRONE8 brand on the arc */}
-              <View className="absolute inset-x-0 top-0 items-center justify-center mt-10">
-              </View>
-            </View>
+      <View className="absolute top-0 left-0 right-0 h-1/2 overflow-hidden">
+        <View
+          className="absolute bg-[#4a3728]"
+          style={{
+            width: Dimensions.get('window').width * 2,
+            height: Dimensions.get('window').height * 0.75,
+            top: -Dimensions.get('window').height * 0.4,
+            left: -Dimensions.get('window').width * 0.5,
+            transform: [{ rotate: '-18deg' }],
+          }}
+        />
+
+        {/* THRONE8 brand on the arc */}
+        <View className="absolute inset-x-0 top-0 items-center justify-center mt-10">
+        </View>
+      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -219,6 +270,9 @@ const SignupScreen: React.FC<SignupScreenNavigationProp> = ({ navigation, setIsL
 
             {/* Active Step */}
             {renderStep()}
+
+            {/* Social Buttons (step 1 only) */}
+            {currentStep === 1 && <SocialButtons />}
 
             {/* Sign in link (step 1 only) */}
             {currentStep === 1 && (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,19 @@ import {
   Modal,
   ScrollView,
   Pressable,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { X, ChevronDown } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import AuthService from '../../../../services/auth.service';
  
 interface AddProfileSectionModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+const SECTIONS_STORAGE_KEY = 'user_profile_sections_preferences';
  
 interface SubFeature {
   id: string;
@@ -171,6 +177,26 @@ const AddProfileSectionModal: React.FC<AddProfileSectionModalProps> = ({ isOpen,
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [checkedSections, setCheckedSections] = useState<Record<string, boolean>>({});
   const [checkedSubFeatures, setCheckedSubFeatures] = useState<Record<string, boolean>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadSavedPreferences();
+    }
+  }, [isOpen]);
+
+  const loadSavedPreferences = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(SECTIONS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.sections) setCheckedSections(parsed.sections);
+        if (parsed.subFeatures) setCheckedSubFeatures(parsed.subFeatures);
+      }
+    } catch (e) {
+      console.log('Failed to load profile sections preferences:', e);
+    }
+  };
  
   const toggleCategory = (id: string) =>
     setExpandedCategories((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -183,6 +209,30 @@ const AddProfileSectionModal: React.FC<AddProfileSectionModalProps> = ({ isOpen,
  
   const toggleSubFeatureCheck = (id: string) =>
     setCheckedSubFeatures((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const handleAddSelected = async () => {
+    setIsSaving(true);
+    try {
+      const payload = {
+        sections: checkedSections,
+        subFeatures: checkedSubFeatures,
+      };
+      await AsyncStorage.setItem(SECTIONS_STORAGE_KEY, JSON.stringify(payload));
+      try {
+        await AuthService.updateUserProfile({
+          preferences: { profileSections: payload },
+        });
+      } catch (backendError) {
+        console.log('Backend profile sections sync note:', backendError);
+      }
+      Alert.alert('Sections Updated', 'Your profile sections have been updated.');
+      onClose();
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to update sections. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
  
   return (
     <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onClose}>
@@ -345,11 +395,16 @@ const AddProfileSectionModal: React.FC<AddProfileSectionModalProps> = ({ isOpen,
               <Text className="text-[#4a3728] font-semibold text-sm">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={onClose}
+              onPress={handleAddSelected}
+              disabled={isSaving}
               activeOpacity={0.8}
-              className="flex-1 py-3 rounded-full bg-[#4a3728] items-center justify-center"
+              className="flex-1 py-3 rounded-full bg-[#4a3728] items-center justify-center flex-row gap-2"
             >
-              <Text className="text-white font-semibold text-sm">Add Selected</Text>
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text className="text-white font-semibold text-sm">Add Selected</Text>
+              )}
             </TouchableOpacity>
           </View>
         </Pressable>

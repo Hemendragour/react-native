@@ -10,10 +10,20 @@ import { AlertCircle, Eye, EyeOff } from 'lucide-react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../types/Types'; // adjust path
 const BLOCKED_DOMAINS = ['example.com', 'test.com', 'demo.com'];
+// old code: import AuthService from '../../../services/auth.service';
+// ✅ new code: use Redux hook instead of calling AuthService directly
+import { useAuth } from '../../../store/hooks/useAuth';
+import { loginUser } from '../../../store/slices/authSlice';
 
+// old code: Props accepted setIsLoggedIn
+// type Props = {
+//   navigation: NativeStackNavigationProp<any>;
+//   setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
+// };
+
+// ✅ new code: no setIsLoggedIn prop — Redux handles it
 type Props = {
   navigation: NativeStackNavigationProp<any>;
-  setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 interface ValidationErrors {
@@ -56,8 +66,13 @@ const FieldError: React.FC<{ message?: string }> = ({ message }) => {
   return <Text className="text-red-500 text-xs mt-1.5 ml-1">{message}</Text>;
 };
 
-const LoginForm: React.FC<Props> = ({ navigation, setIsLoggedIn }) => {
+// old code: const LoginForm: React.FC<Props> = ({ navigation, setIsLoggedIn }) => {
+// ✅ new code: uses Redux useAuth() hook
+const LoginForm: React.FC<Props> = ({ navigation }) => {
   // const navigation = useNavigation<any>();
+
+  // ✅ Redux auth hook
+  const { login, setLoggedIn } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -95,13 +110,29 @@ const LoginForm: React.FC<Props> = ({ navigation, setIsLoggedIn }) => {
     setApiError(null);
     setLoading(true);
     try {
-      await new Promise(res => setTimeout(res, 1200));
+      // old code: const response = await AuthService.login({...})
+      // old code: setIsLoggedIn(true);
 
-      // Mark the user as logged in and switch to the app stack
-      setIsLoggedIn(true);
+      // ✅ new code: use Redux thunk for login
+      const result = await login({
+        email: email.toLowerCase().trim(),
+        password: password,
+        rememberMe: rememberMe,
+      });
+
+      // Check if thunk was rejected
+      if (loginUser.rejected.match(result)) {
+        throw new Error((result.payload as string) || 'Login failed');
+      }
+
+      console.log('Login user successful via Redux');
+      // Redux automatically sets isLoggedIn = true via authSlice fulfilled case
     } catch (error: any) {
       console.error('❌ [FORM] Login failed:', error);
+
       const msg = error?.message?.toLowerCase() ?? '';
+
+
       if (msg.includes('invalid') || msg.includes('credentials')) {
         setApiError(
           '❌ Invalid email or password. Please check your credentials.',
@@ -115,7 +146,7 @@ const LoginForm: React.FC<Props> = ({ navigation, setIsLoggedIn }) => {
       } else if (msg.includes('network') || msg.includes('connection')) {
         setApiError('🌐 No internet connection. Please check your network.');
       } else {
-        setApiError('⚠️ Something went wrong. Please try again.');
+        setApiError(error.message || '⚠️ Something went wrong. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -148,9 +179,8 @@ const LoginForm: React.FC<Props> = ({ navigation, setIsLoggedIn }) => {
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
-          className={`w-full px-5 py-4 rounded-2xl border bg-white text-black text-sm ${
-            errors.email ? 'border-red-400' : 'border-[#4a3728]/30'
-          }`}
+          className={`w-full px-5 py-4 rounded-2xl border bg-white text-black text-sm ${errors.email ? 'border-red-400' : 'border-[#4a3728]/30'
+            }`}
         />
         <FieldError message={errors.email} />
       </View>
@@ -174,9 +204,8 @@ const LoginForm: React.FC<Props> = ({ navigation, setIsLoggedIn }) => {
             secureTextEntry={!showPassword}
             autoCapitalize="none"
             autoCorrect={false}
-            className={`w-full px-5 py-4 pr-14 rounded-2xl border bg-white text-black text-sm ${
-              errors.password ? 'border-red-400' : 'border-[#4a3728]/30'
-            }`}
+            className={`w-full px-5 py-4 pr-14 rounded-2xl border bg-white text-black text-sm ${errors.password ? 'border-red-400' : 'border-[#4a3728]/30'
+              }`}
           />
           {/* Eye toggle */}
           <TouchableOpacity
@@ -203,11 +232,10 @@ const LoginForm: React.FC<Props> = ({ navigation, setIsLoggedIn }) => {
           className="flex-row items-center gap-x-2"
         >
           <View
-            className={`w-5 h-5 rounded border-2 items-center justify-center ${
-              rememberMe
+            className={`w-5 h-5 rounded border-2 items-center justify-center ${rememberMe
                 ? 'bg-[#4a3728] border-[#4a3728]'
                 : 'bg-white border-gray-300'
-            }`}
+              }`}
           >
             {rememberMe && (
               <Text className="text-white text-xs font-bold">✓</Text>
@@ -232,9 +260,8 @@ const LoginForm: React.FC<Props> = ({ navigation, setIsLoggedIn }) => {
         onPress={handleSubmit}
         disabled={loading || !rememberMe}
         activeOpacity={0.85}
-        className={`w-full py-4 rounded-2xl items-center justify-center flex-row gap-x-2 shadow-md ${
-          rememberMe && !loading ? 'bg-[#4a3728]' : 'bg-gray-300'
-        }`}
+        className={`w-full py-4 rounded-2xl items-center justify-center flex-row gap-x-2 shadow-md ${rememberMe && !loading ? 'bg-[#4a3728]' : 'bg-gray-300'
+          }`}
       >
         {loading ? (
           <>
@@ -245,9 +272,8 @@ const LoginForm: React.FC<Props> = ({ navigation, setIsLoggedIn }) => {
           </>
         ) : (
           <Text
-            className={`font-semibold text-base ${
-              rememberMe ? 'text-white' : 'text-gray-500'
-            }`}
+            className={`font-semibold text-base ${rememberMe ? 'text-white' : 'text-gray-500'
+              }`}
           >
             Sign In
           </Text>

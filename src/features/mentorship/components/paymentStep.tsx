@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  ActivityIndicator, Modal,
+  ActivityIndicator, Modal, Alert,
 } from 'react-native';
 import { ChevronLeft } from 'lucide-react-native';
 import { C, PAY_METHODS, BANKS, WALLETS } from '../data/mentorData';
 import type { Service, CalendarData, FormData } from '../data/mentortypes';
 import PickerSheet from '../../auth/components/PickerSheet';
 
-// TODO: import SessionService from '@/lib/api/session.service';
+import SessionService from '../../../services/session.service';
+import AvailabilityService from '../../../services/availability.service';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface PaymentStepProps {
   selectedService: Service | null;
@@ -35,8 +37,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [showWalletPicker, setShowWalletPicker] = useState(false);
 
-  const price: number = selectedService?.price as number;
-  const gst:   number = Math.round(price * 0.18);
+  const price: number = typeof selectedService?.price === 'number' ? selectedService.price : 0;
+  const gst: number = Math.round(price * 0.18);
   const total: number = price + gst;
 
   const paymentMethodMap: Record<string, string> = {
@@ -48,18 +50,194 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
     setBooking(true);
     try {
       const { selectedDate, currentMonth, availabilityId, slotTime } = calendarData;
-      const yr  = currentMonth.getFullYear();
-      const mo  = String(currentMonth.getMonth() + 1).padStart(2, '0');
-      const dy  = String(selectedDate).padStart(2, '0');
-      const startTime   = slotTime.split(' - ')[0];
+      const yr = currentMonth.getFullYear();
+      const mo = String(currentMonth.getMonth() + 1).padStart(2, '0');
+      const dy = String(selectedDate).padStart(2, '0');
+      const [startTimeRaw, endTimeRaw] = (slotTime || '10:00 - 11:00').split(' - ').map((s) => s?.trim());
+      const startTime = startTimeRaw || '10:00';
+      const durationMins = selectedService?.duration ? parseInt(String(selectedService.duration), 10) : 60;
+      const [sh, sm] = startTime.split(':').map(Number);
+      const endTotal = (sh || 0) * 60 + (sm || 0) + (durationMins > 0 ? durationMins : 60);
+      const calculatedEndH = String(Math.floor(endTotal / 60) % 24).padStart(2, '0');
+      const calculatedEndM = String(endTotal % 60).padStart(2, '0');
+      const endTime = endTimeRaw || `${calculatedEndH}:${calculatedEndM}`;
       const scheduledAt = new Date(`${yr}-${mo}-${dy}T${startTime}:00+05:30`).toISOString();
 
-      // TODO: await SessionService.bookSession({ ... });
-      await new Promise((res) => setTimeout(res, 1500)); // stub
+      let finalAvailabilityId: string = availabilityId || '';
+
+      // Ensure that a valid availability record exists in DB for this date and contains the exact slot [startTime, endTime]
+      try {
+        const availRes = await AvailabilityService.getMentorAvailability(mentorId);
+        const avails = availRes?.data?.availabilities || [];
+        const dateStr = `${yr}-${mo}-${dy}`;
+        const matched = avails.find((a: any) => {
+          const dbDate = new Date(a.date);
+          const dbDateStr = `${dbDate.getFullYear()}-${String(dbDate.getMonth() + 1).padStart(2, '0')}-${String(dbDate.getDate()).padStart(2, '0')}`;
+          const dbUTCStr = typeof a.date === 'string' ? a.date.substring(0, 10) : '';
+          return dbDateStr === dateStr || dbUTCStr === dateStr;
+        });
+
+        if (matched && (matched.availabilityId || matched._id)) {
+          finalAvailabilityId = matched.availabilityId || matched._id || '';
+
+          // Check if the matched record already contains the exact slot being booked
+          const hasExactSlot = Array.isArray(matched.slots) && matched.slots.some(
+            (s: any) => s.startTime === startTime && s.endTime === endTime && !s.isBlocked
+          );
+
+          if (!hasExactSlot && finalAvailabilityId) {
+            // Subdivide / adjust existing slots to include the exact booked slot without overlap
+            const startMins = (sh || 0) * 60 + (sm || 0);
+            const endMins = endTotal;
+            const existing = Array.isArray(matched.slots) ? matched.slots : [];
+            const newSlotsList: Array<{ startTime: string; endTime: string; isBooked?: boolean; isBlocked?: boolean }> = [];
+
+            existing.forEach((s: any) => {
+              const [sH, sM] = (s.startTime || '00:00').split(':').map(Number);
+              const [eH, eM] = (s.endTime || '00:00').split(':').map(Number);
+              const sMin = (sH || 0) * 60 + (sM || 0);
+              const eMin = (eH || 0) * 60 + (eM || 0);
+
+              if (eMin <= startMins || sMin >= endMins) {
+                newSlotsList.push(s);
+              } else {
+                if (sMin < startMins) {
+                  newSlotsList.push({
+                    startTime: s.startTime,
+                    endTime: startTime,
+                    isBooked: false,
+                    isBlocked: false,
+                  });
+                }
+                if (eMin > endMins) {
+                  newSlotsList.push({
+                    startTime: endTime,
+                    endTime: s.endTime,
+                    isBooked: false,
+                    isBlocked: false,
+                  });
+                }
+              }
+            });
+
+            newSlotsList.push({
+              startTime,
+              endTime,
+              isBooked: false,
+              isBlocked: false,
+            });
+
+            newSlotsList.sort((a, b) => {
+              const [aH, aM] = a.startTime.split(':').map(Number);
+              const [bH, bM] = b.startTime.split(':').map(Number);
+              return (aH * 60 + aM) - (bH * 60 + bM);
+            });
+
+            await AvailabilityService.updateAvailability(finalAvailabilityId, { slots: newSlotsList }).catch((e) => {
+              console.warn('Notice: Could not split slot in existing availability:', e?.message);
+            });
+          }
+        } else {
+          // Auto-create availability record for the mentor with the exact slot so backend booking succeeds without overlaps
+          const newAvail = await AvailabilityService.createAvailability({
+            mentorId,
+            date: new Date(`${yr}-${mo}-${dy}T00:00:00.000Z`).toISOString(),
+            slots: [{ startTime, endTime }],
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata',
+          });
+          finalAvailabilityId = newAvail?.data?.availabilityId || newAvail?.data?._id || newAvail?.data?.availability?._id || '';
+        }
+      } catch (availErr: any) {
+        console.warn('Availability fallback resolution notice:', availErr?.message);
+        try {
+          const refetch = await AvailabilityService.getMentorAvailability(mentorId);
+          const avails = refetch?.data?.availabilities || [];
+          const dateStr = `${yr}-${mo}-${dy}`;
+          const matched = avails.find((a: any) => {
+            const dbDate = new Date(a.date);
+            const dbDateStr = `${dbDate.getFullYear()}-${String(dbDate.getMonth() + 1).padStart(2, '0')}-${String(dbDate.getDate()).padStart(2, '0')}`;
+            const dbUTCStr = typeof a.date === 'string' ? a.date.substring(0, 10) : '';
+            return dbDateStr === dateStr || dbUTCStr === dateStr;
+          });
+          if (matched) {
+            finalAvailabilityId = matched.availabilityId || matched._id || '';
+          }
+        } catch {}
+      }
+
+      const sessionId = selectedService?.id || (selectedService as any)?.sessionId || (selectedService as any)?._id || '';
+
+      await SessionService.bookSession({
+        sessionId,
+        mentorId,
+        availabilityId: finalAvailabilityId || 'default',
+        slotTime,
+        scheduledAt,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata',
+        paymentMethod: paymentMethodMap[paymentMethod] || 'stripe',
+        pricing: {
+          basePrice: price,
+          platformFee: gst,
+          totalAmount: total,
+          currency: 'INR',
+        },
+      });
+
+      // 1. Mark slot as isBooked in DB availability record so other users/devices see it as occupied
+      try {
+        if (finalAvailabilityId && finalAvailabilityId !== 'default' && finalAvailabilityId !== 'unavailable') {
+          const freshAvail = await AvailabilityService.getAvailabilityById(finalAvailabilityId).catch(() => null);
+          let currentSlots = freshAvail?.data?.slots || [];
+          if (currentSlots.length === 0) {
+            const allAvail = await AvailabilityService.getMentorAvailability(mentorId).catch(() => null);
+            const foundRec = (allAvail?.data?.availabilities || []).find((a: any) =>
+              a.availabilityId === finalAvailabilityId || a._id === finalAvailabilityId
+            );
+            if (foundRec && Array.isArray(foundRec.slots)) {
+              currentSlots = foundRec.slots;
+            }
+          }
+
+          let slotFound = false;
+          const updatedSlots = currentSlots.map((s: any) => {
+            if (s.startTime === startTime && s.endTime === endTime) {
+              slotFound = true;
+              return { ...s, isBooked: true };
+            }
+            return s;
+          });
+          if (!slotFound) {
+            updatedSlots.push({ startTime, endTime, isBooked: true, isBlocked: false });
+          }
+          await AvailabilityService.updateAvailability(finalAvailabilityId, { slots: updatedSlots }).catch(() => {});
+        }
+      } catch (availUpdateErr) {
+        console.warn('Notice: Could not mark slot isBooked in DB availability:', availUpdateErr);
+      }
+
+      // 2. Immediately cache booked slot locally for instant reflection across all services
+      try {
+        const dateStr = `${yr}-${mo}-${dy}`;
+        const cacheKey = `@throne8_booked_slots_${mentorId}`;
+        const existingVal = await AsyncStorage.getItem(cacheKey);
+        const bookedList = existingVal ? JSON.parse(existingVal) : [];
+        bookedList.push({
+          date: dateStr,
+          startTime,
+          endTime,
+          slotTime,
+          scheduledAt,
+          sessionId,
+        });
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(bookedList));
+      } catch (cacheErr) {
+        console.warn('Notice: Could not update AsyncStorage booked slots:', cacheErr);
+      }
 
       onBookingSuccess();
     } catch (error: any) {
       console.error('Booking failed:', error.message);
+      Alert.alert('Booking Error', error.message || 'Failed to book session. Please try again.');
       setBooking(false);
     }
   };
@@ -99,9 +277,8 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
                     key={m.id}
                     onPress={() => setPaymentMethod(m.id)}
                     activeOpacity={0.85}
-                    className={`w-[47%] rounded-2xl p-4 items-center border-2 ${
-                      active ? 'bg-[#7a5c3e] border-[#7a5c3e]' : 'bg-[#fbf7f3] border-[#e0d8cf]'
-                    }`}
+                    className={`w-[47%] rounded-2xl p-4 items-center border-2 ${active ? 'bg-[#7a5c3e] border-[#7a5c3e]' : 'bg-[#fbf7f3] border-[#e0d8cf]'
+                      }`}
                   >
                     <Text className="text-2xl mb-1">{m.icon}</Text>
                     <Text className={`font-bold text-xs mb-0.5 ${active ? 'text-white' : 'text-[#4a3728]'}`}>
@@ -167,10 +344,10 @@ const PaymentStep: React.FC<PaymentStepProps> = ({
             <View className="bg-[#fbf7f3] border border-[#e0d8cf] rounded-2xl p-4 mb-4">
               <Text className="font-bold text-[#4a3728] mb-3 text-sm">Payment Summary</Text>
               {([
-                ['Service Fee',   `₹${price}`,  false],
-                ['Platform Fee',  '₹0',         false],
-                ['GST (18%)',     `₹${gst}`,    false],
-                ['Total',         `₹${total}`,  true ],
+                ['Service Fee', `₹${price}`, false],
+                ['Platform Fee', '₹0', false],
+                ['GST (18%)', `₹${gst}`, false],
+                ['Total', `₹${total}`, true],
               ] as [string, string, boolean][]).map(([k, v, bold]) => (
                 <View key={k} className={`flex-row justify-between mb-1.5 ${bold ? 'border-t border-[#e0d8cf] pt-2 mt-1' : ''}`}>
                   <Text className={`text-xs ${bold ? 'font-bold text-[#4a3728]' : 'text-[#7a5c3e]'}`}>{k}:</Text>

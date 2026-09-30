@@ -78,15 +78,24 @@ class TokenStorage {
                 AsyncStorage.getItem(KEYS.TOKEN_EXPIRY),
             ]);
 
+            let parsedUserData: UserData | null = null;
+            if (userDataStr && userDataStr !== 'undefined' && userDataStr !== 'null') {
+                try {
+                    parsedUserData = JSON.parse(userDataStr);
+                } catch (e) {
+                    console.warn('⚠️ [TokenStorage] Could not parse stored user data:', e);
+                }
+            }
+
             _cache.accessToken  = accessToken ? accessToken.password : null;
             _cache.refreshToken = refreshToken ? refreshToken.password : null;
-            _cache.userData     = userDataStr ? JSON.parse(userDataStr) : null;
+            _cache.userData     = parsedUserData;
             _cache.tokenExpiry  = expiryStr ? parseInt(expiryStr) : null;
 
             console.log('✅ [TokenStorage] Initialized from SecureStore', {
                 hasAccessToken:  !!accessToken,
                 hasRefreshToken: !!refreshToken,
-                hasUserData:     !!userDataStr,
+                hasUserData:     !!parsedUserData,
             });
         } catch (error) {
             console.error('❌ [TokenStorage] Init failed:', error);
@@ -96,26 +105,31 @@ class TokenStorage {
     // ══════════════════════════════════════════
     // SET — login/register ke baad call karo
     // ══════════════════════════════════════════
-    static async setAuthData(tokens: TokenData, user: UserData): Promise<void> {
+    static async setAuthData(tokens: TokenData, user?: UserData | null): Promise<void> {
         try {
             const expiryTime = calcExpiryTime(tokens.expiresIn);
+            const currentUser = user || _cache.userData;
 
-            // SecureStore mein save karo (persist)
-            await Promise.all([
-                Keychain.setGenericPassword(KEYS.ACCESS_TOKEN,  tokens.accessToken),
-                Keychain.setGenericPassword(KEYS.REFRESH_TOKEN, tokens.refreshToken),
-                Keychain.setGenericPassword(KEYS.USER_DATA,     JSON.stringify(user)),
-                Keychain.setGenericPassword(KEYS.TOKEN_EXPIRY,  expiryTime.toString()),
-            ]);
+            const storagePromises: Promise<any>[] = [
+                Keychain.setGenericPassword('token', tokens.accessToken,  { service: KEYS.ACCESS_TOKEN }),
+                Keychain.setGenericPassword('token', tokens.refreshToken, { service: KEYS.REFRESH_TOKEN }),
+                AsyncStorage.setItem(KEYS.TOKEN_EXPIRY, expiryTime.toString()),
+            ];
+
+            if (currentUser) {
+                storagePromises.push(AsyncStorage.setItem(KEYS.USER_DATA, JSON.stringify(currentUser)));
+            }
+
+            await Promise.all(storagePromises);
 
             // Memory cache update karo (sync access ke liye)
             _cache.accessToken  = tokens.accessToken;
             _cache.refreshToken = tokens.refreshToken;
-            _cache.userData     = user;
+            _cache.userData     = currentUser;
             _cache.tokenExpiry  = expiryTime;
 
             console.log('✅ [TokenStorage] Auth data stored', {
-                userId:     user.userId,
+                userId:     currentUser?.userId,
                 expiresIn:  tokens.expiresIn,
                 expiryTime: new Date(expiryTime).toLocaleString(),
             });
@@ -134,10 +148,11 @@ class TokenStorage {
             console.log('ℹ️ [TokenStorage] No access token in cache');
             return null;
         }
-        if (this.isTokenExpired()) {
-            console.warn('⚠️ [TokenStorage] Access token expired');
-            return null;
-        }
+        // NOTE: We intentionally do NOT check expiry here anymore.
+        // The response interceptor handles 401 → silent refresh.
+        // Returning null here was causing isAuthenticated() to fail
+        // after 15 min, logging the user out even though the
+        // refresh token (7–30 days) was still perfectly valid.
         return _cache.accessToken;
     }
 
@@ -158,16 +173,20 @@ class TokenStorage {
     static isTokenExpired(): boolean {
         if (!_cache.tokenExpiry) return true;
         const expired = Date.now() >= _cache.tokenExpiry;
-        if (expired) console.warn('⚠️ [TokenStorage] Token has expired');
+        if (expired) console.log('ℹ️ [TokenStorage] Access token expired (will refresh silently)');
         return expired;
     }
 
     // ══════════════════════════════════════════
     // IS AUTHENTICATED (sync)
+    //
+    // Instagram/LinkedIn approach:
+    // User is "authenticated" as long as a refresh
+    // token exists. The short-lived access token
+    // expiring is normal — interceptor refreshes it.
     // ══════════════════════════════════════════
     static isAuthenticated(): boolean {
         const isAuth = !!(
-            this.getAccessToken() &&
             this.getRefreshToken() &&
             this.getUserData()
         );
@@ -175,6 +194,7 @@ class TokenStorage {
             hasAccessToken:  !!_cache.accessToken,
             hasRefreshToken: !!_cache.refreshToken,
             hasUserData:     !!_cache.userData,
+            accessTokenExpired: this.isTokenExpired(),
             isAuthenticated: isAuth,
         });
         return isAuth;
@@ -190,11 +210,22 @@ class TokenStorage {
         try {
             const expiryTime = calcExpiryTime(expiresIn);
 
-            await Promise.all([
-                Keychain.setGenericPassword(KEYS.ACCESS_TOKEN, accessToken),
-                Keychain.setGenericPassword(KEYS.TOKEN_EXPIRY, expiryTime.toString()),
-            ]);
+            // await Promise.all([
+            //     Keychain.setGenericPassword(KEYS.ACCESS_TOKEN, accessToken),
+            //     Keychain.setGenericPassword(KEYS.TOKEN_EXPIRY, expiryTime.toString()),
+            // ]);
 
+            // FIX: service option here too
+            // Keychain.setGenericPassword('token', accessToken, { service: KEYS.ACCESS_TOKEN });
+            // // FIX: expiry in AsyncStorage
+            // AsyncStorage.setItem(KEYS.TOKEN_EXPIRY, expiryTime.toString());
+
+            // ✅ FIX: wrapped in await Promise.all to ensure storage finishes before continuing
+            await Promise.all([
+                Keychain.setGenericPassword('token', accessToken, { service: KEYS.ACCESS_TOKEN }),
+                AsyncStorage.setItem(KEYS.TOKEN_EXPIRY, expiryTime.toString())
+            ]);
+            
             _cache.accessToken = accessToken;
             _cache.tokenExpiry = expiryTime;
 
@@ -209,13 +240,23 @@ class TokenStorage {
     // ══════════════════════════════════════════
     static async clearAuthData(): Promise<void> {
         try {
+            // await Promise.all([
+            //     Keychain.resetGenericPassword({ service: KEYS.ACCESS_TOKEN }),
+            //     Keychain.resetGenericPassword({ service: KEYS.REFRESH_TOKEN }),
+            //     Keychain.resetGenericPassword({ service: KEYS.USER_DATA }),
+            //     Keychain.resetGenericPassword({ service: KEYS.TOKEN_EXPIRY }),
+            // ]);
+
             await Promise.all([
+                // ✅ FIX: service option on reset
                 Keychain.resetGenericPassword({ service: KEYS.ACCESS_TOKEN }),
                 Keychain.resetGenericPassword({ service: KEYS.REFRESH_TOKEN }),
-                Keychain.resetGenericPassword({ service: KEYS.USER_DATA }),
-                Keychain.resetGenericPassword({ service: KEYS.TOKEN_EXPIRY }),
+                // ✅ FIX: remove from AsyncStorage (consistent with setAuthData)
+                AsyncStorage.removeItem(KEYS.USER_DATA),
+                AsyncStorage.removeItem(KEYS.TOKEN_EXPIRY),
             ]);
-
+            
+            
             // Memory cache bhi clear karo
             _cache.accessToken  = null;
             _cache.refreshToken = null;

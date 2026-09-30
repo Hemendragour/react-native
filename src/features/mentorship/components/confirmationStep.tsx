@@ -19,6 +19,7 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
 
   const rows: [string, string][] = [
     [isRes ? 'Resource:' : 'Service:', selectedService?.title ?? ''],
+    ...(selectedService?.duration ? [['Duration:', selectedService.duration] as [string, string]] : []),
     ...(calendarData?.selectedDate
       ? [
           ['Date:', `${calendarData.selectedDate} ${month !== undefined ? MONTHS[month] : ''} ${year}`],

@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity } from 'react-native';
+import { ChevronDown } from 'lucide-react-native';
+import PickerSheet from './PickerSheet';
+
+const VALID_EDUCATION_LEVELS = [
+  '10th Pass', '12th Pass', 'Diploma', 'B.Tech', 'B.E', 'B.Sc', 'BCA', 'B.Com', 'B.A', 'M.Tech', 'M.Sc', 'MCA', 'MBA', 'Other'
+].map(l => ({ label: l, value: l }));
+
+const VALID_JOB_ROLES = [
+  'Software Developer', 'Frontend Developer', 'Backend Developer', 'Full Stack Developer', 'Mobile App Developer', 'Data Analyst', 'Data Scientist', 'Machine Learning Engineer', 'DevOps Engineer', 'Quality Assurance Engineer', 'UI/UX Designer', 'Product Manager', 'Business Analyst', 'Digital Marketing', 'Content Writer', 'Sales Executive', 'Customer Support', 'HR Recruiter', 'Other'
+].map(r => ({ label: r, value: r }));
 
 interface Props {
   onNext: (data: any) => void;
@@ -54,6 +64,8 @@ const FresherEducationRole: React.FC<Props> = ({ onNext, onBack }) => {
   const [values, setValues] = useState({ highestEducation: '', preferredRole: '', cgpa: '' });
   const [errors, setErrors] = useState<Partial<Record<Fields, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<Fields, boolean>>>({});
+  const [showEducationPicker, setShowEducationPicker] = useState(false);
+  const [showRolePicker, setShowRolePicker] = useState(false);
 
   const setValue = (field: Fields, val: string) => {
     setValues((p) => ({ ...p, [field]: val }));
@@ -91,6 +103,7 @@ const FresherEducationRole: React.FC<Props> = ({ onNext, onBack }) => {
       {/* Highest Education */}
       <View>
         <FieldLabel text="Highest Education" />
+        {/*
         <TextInput
           value={values.highestEducation}
           onChangeText={(v) => setValue('highestEducation', v)}
@@ -99,12 +112,38 @@ const FresherEducationRole: React.FC<Props> = ({ onNext, onBack }) => {
           placeholderTextColor="#9ca3af"
           className={inputClass('highestEducation')}
         />
+        */}
+        <TouchableOpacity
+          onPress={() => setShowEducationPicker(true)}
+          activeOpacity={0.8}
+          className={`flex-row items-center justify-between w-full px-5 py-4 rounded-2xl border bg-white ${
+            errors.highestEducation && touched.highestEducation ? 'border-red-400' : 'border-[#4a3728]/40'
+          }`}
+        >
+          <Text className={`text-sm ${values.highestEducation ? 'text-black' : 'text-[#9ca3af]'}`}>
+            {values.highestEducation || "Select Education Level"}
+          </Text>
+          <ChevronDown size={20} color="#9ca3af" />
+        </TouchableOpacity>
+        <PickerSheet
+          visible={showEducationPicker}
+          title="Select Education Level"
+          options={VALID_EDUCATION_LEVELS}
+          selected={values.highestEducation}
+          onSelect={(val) => {
+            setTouched((p) => ({ ...p, highestEducation: true }));
+            setValues((p) => ({ ...p, highestEducation: val }));
+            setErrors((p) => ({ ...p, highestEducation: validators.highestEducation(val) }));
+          }}
+          onClose={() => setShowEducationPicker(false)}
+        />
         {touched.highestEducation && <FieldError message={errors.highestEducation} />}
       </View>
 
       {/* Preferred Role */}
       <View>
         <FieldLabel text="Preferred Role" />
+        {/*
         <TextInput
           value={values.preferredRole}
           onChangeText={(v) => setValue('preferredRole', v)}
@@ -112,6 +151,31 @@ const FresherEducationRole: React.FC<Props> = ({ onNext, onBack }) => {
           placeholder="e.g., Software Engineer"
           placeholderTextColor="#9ca3af"
           className={inputClass('preferredRole')}
+        />
+        */}
+        <TouchableOpacity
+          onPress={() => setShowRolePicker(true)}
+          activeOpacity={0.8}
+          className={`flex-row items-center justify-between w-full px-5 py-4 rounded-2xl border bg-white ${
+            errors.preferredRole && touched.preferredRole ? 'border-red-400' : 'border-[#4a3728]/40'
+          }`}
+        >
+          <Text className={`text-sm ${values.preferredRole ? 'text-black' : 'text-[#9ca3af]'}`}>
+            {values.preferredRole || "Select Preferred Role"}
+          </Text>
+          <ChevronDown size={20} color="#9ca3af" />
+        </TouchableOpacity>
+        <PickerSheet
+          visible={showRolePicker}
+          title="Select Preferred Role"
+          options={VALID_JOB_ROLES}
+          selected={values.preferredRole}
+          onSelect={(val) => {
+            setTouched((p) => ({ ...p, preferredRole: true }));
+            setValues((p) => ({ ...p, preferredRole: val }));
+            setErrors((p) => ({ ...p, preferredRole: validators.preferredRole(val) }));
+          }}
+          onClose={() => setShowRolePicker(false)}
         />
         {touched.preferredRole && <FieldError message={errors.preferredRole} />}
       </View>

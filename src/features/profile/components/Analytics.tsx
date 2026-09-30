@@ -7,8 +7,7 @@ import {
 } from 'react-native';
 import { BarChart2, Eye, TrendingUp, Search } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
-// import AnalyticsService from '@/lib/api/analytics.service';
-// import { useAuth } from '@/hooks/useAuth';
+import AuthService, { api } from '../../../services/auth.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AnalyticsData {
@@ -110,7 +109,7 @@ const LoadingSkeleton: React.FC = () => (
 // ─── Main Component ───────────────────────────────────────────────────────────
 const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ userId }) => {
   const navigation = useNavigation<any>();
-  const { user: currentUser } = useAuth();
+  const currentUser = AuthService.getCurrentUser();
 
   const [analytics, setAnalytics] = useState<Analytics>({
     profileViews: { total: 0, last7Days: 0, last30Days: 0 },
@@ -124,15 +123,15 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ userId }) => {
     const fetchAnalytics = async () => {
       try {
         setIsLoading(true);
-        const [profileViews, postImpressions, searchAppearances] = await Promise.all([
-          AnalyticsService.getProfileViewsCount(30),
-          AnalyticsService.getPostImpressionsCount(20),
-          AnalyticsService.getSearchAppearancesCount(),
+        const [profileViewsRes, postImpressionsRes, searchAppearancesRes] = await Promise.all([
+          api.get('/api/v1/profile/analytics/profile-views/count?dateRange=30'),
+          api.get('/api/v1/profile/analytics/post-impressions/count'),
+          api.get('/api/v1/profile/analytics/search-appearances/count'),
         ]);
         setAnalytics({
-          profileViews: profileViews.data || { total: 0, last7Days: 0, last30Days: 0 },
-          postImpressions: postImpressions.data || { total: 0, last7Days: 0, last30Days: 0 },
-          searchAppearances: searchAppearances.data || { total: 0, last7Days: 0, last30Days: 0 },
+          profileViews: profileViewsRes.data?.data || { total: 0, last7Days: 0, last30Days: 0 },
+          postImpressions: postImpressionsRes.data?.data || { total: 0, last7Days: 0, last30Days: 0 },
+          searchAppearances: searchAppearancesRes.data?.data || { total: 0, last7Days: 0, last30Days: 0 },
         });
       } catch (err) {
         console.error('Failed to fetch analytics:', err);

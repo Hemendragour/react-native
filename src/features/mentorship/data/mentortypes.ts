@@ -5,7 +5,9 @@ export interface Service {
   duration: string;
   originalPrice: number | null;
   price: number | 'Free';
+  pricing?: any;
   popular?: boolean;
+  scheduledAt?: string;
 }
 
 export interface CalendarData {
